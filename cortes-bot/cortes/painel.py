@@ -181,10 +181,8 @@ def atualizar(dados: Path, ident: str, mudancas: dict) -> dict:
         return c
 
 
-def gerar_legenda(dados: Path, ident: str) -> dict:
-    """Pede o título/descrição/hashtags à IA e já salva no corte."""
-    from . import ia
-
+def _para_ia(dados: Path, ident: str) -> tuple[dict, dict, dict]:
+    """(corte, canal, cfg) prontos para virar prompt."""
     arq, lista, idx = _localizar(dados, ident)
     d = json.loads(arq.read_text(encoding="utf-8"))
     c = d[lista][idx]
@@ -196,7 +194,21 @@ def gerar_legenda(dados: Path, ident: str) -> dict:
         c = {**c, "palavras": [p for x in partes for p in x.get("palavras", [])],
              "inicio": min((x["inicio"] for x in partes), default=c["inicio"]),
              "fim": max((x["fim"] for x in partes), default=c["fim"])}
-    legenda = ia.legenda_para(c, canal, cfg)
+    return c, canal, cfg
+
+
+def prompt_legenda(dados: Path, ident: str) -> str:
+    """O prompt pronto para colar em qualquer chat, para quem não tem credencial de IA."""
+    from . import ia
+
+    return ia.prompt_avulso(*_para_ia(dados, ident))
+
+
+def gerar_legenda(dados: Path, ident: str) -> dict:
+    """Pede o título/descrição/hashtags à IA e já salva no corte."""
+    from . import ia
+
+    legenda = ia.legenda_para(*_para_ia(dados, ident))
     atualizar(dados, ident, legenda)
     return {"ok": True, **legenda}
 
@@ -337,7 +349,7 @@ def opcoes_tiktok(tk: dict, escolhidas: list[dict]) -> dict:
 
 
 def estado() -> dict:
-    from . import pub_tiktok, pub_youtube
+    from . import ia, pub_tiktok, pub_youtube
 
     cfg = config.carregar()
     return {
@@ -345,6 +357,7 @@ def estado() -> dict:
         "contas": contas.listar(),
         "plataformas": {k: v["nome"] for k, v in contas.PLATAFORMAS.items()},
         "duracao_max": {k: v["duracao_max"] for k, v in contas.PLATAFORMAS.items()},
+        "ia_disponivel": ia.credenciais_disponiveis(),
         "youtube_configurado": pub_youtube.configurado(cfg),
         "youtube_credencial": cfg["publicacao"]["youtube"]["client_secret"],
         "tiktok_configurado": pub_tiktok.configurado(cfg),
@@ -433,6 +446,9 @@ def servir(dados: Path, porta: int = 8800, trabalhador: bool = True) -> None:
                     self._json(trabalho.estado())
                 elif url.path == "/api/fila":
                     self._json(sorted(fila.listar(), key=lambda i: i["agendado_para"], reverse=True))
+                elif url.path.startswith("/api/prompt/"):
+                    self._json({"ok": True,
+                                "prompt": prompt_legenda(dados, unquote(url.path[len("/api/prompt/"):]))})
                 elif url.path.startswith("/capa/"):
                     q = parse_qs(url.query)
                     quadro = capa_bytes(caminho_video(dados, unquote(url.path[len("/capa/"):])),

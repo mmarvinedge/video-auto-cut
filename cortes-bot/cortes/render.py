@@ -95,7 +95,12 @@ def fracao_parada(video: Path, inicio: float, fim: float) -> float:
         config.ffmpeg(), "-ss", f"{inicio:.2f}", "-to", f"{fim:.2f}", "-i", str(video),
         "-vf", "scale=320:-2,freezedetect=n=0.003:d=1", "-an", "-f", "null", "-",
     ]
-    err = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", errors="replace").stderr
+    r = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", errors="replace")
+    if r.returncode:
+        # sem isso, um ffmpeg quebrado nao casa com o regex e a funcao devolve 0.0:
+        # o erro viraria "nao tem tela parada" e o corte ruim passaria batido
+        raise RuntimeError(f"freezedetect falhou em {video.name}: {r.stderr.strip()[-300:]}")
+    err = r.stderr
     parado = sum(float(x) for x in re.findall(r"freeze_duration: ([0-9.]+)", err))
     inicios = re.findall(r"freeze_start: ([0-9.]+)", err)
     if len(inicios) > err.count("freeze_end"):  # congelado até o fim do trecho

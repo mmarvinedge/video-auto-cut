@@ -53,14 +53,38 @@ def serie_chat(mensagens: list[dict], inicio_vod: float, duracao: int, cfg_det: 
     return _soma_movel(pesos, cfg_det["janela"])
 
 
+BLOCO_S = 600   # quantos segundos de áudio ficam na memória de uma vez
+
+
 def serie_audio(video: Path, janela: int) -> np.ndarray:
-    """Energia (dB RMS) por segundo do áudio, decodificado em mono 8 kHz pelo ffmpeg."""
-    cmd = [config.ffmpeg(), "-v", "error", "-i", str(video), "-vn", "-ac", "1", "-ar", str(TAXA_AUDIO), "-f", "s16le", "-"]
-    bruto = subprocess.run(cmd, capture_output=True, check=True).stdout
-    a = np.frombuffer(bruto, dtype=np.int16).astype(np.float32) / 32768
-    seg = len(a) // TAXA_AUDIO
-    a = a[: seg * TAXA_AUDIO].reshape(seg, TAXA_AUDIO)
-    db = 20 * np.log10(np.sqrt((a**2).mean(axis=1)) + 1e-6)
+    """Energia (dB RMS) por segundo do áudio, decodificado em mono 8 kHz pelo ffmpeg.
+
+    Lê a saída do ffmpeg em blocos de BLOCO_S segundos em vez de guardar a live inteira:
+    uma live de 7h são 201 milhões de amostras, e entre o int16 cru, o float32 e o quadrado
+    o pico passava de 1,8 GB. Em blocos, o custo não depende mais do tamanho da live."""
+    cmd = [config.ffmpeg(), "-v", "error", "-i", str(video), "-vn", "-ac", "1",
+           "-ar", str(TAXA_AUDIO), "-f", "s16le", "-"]
+    tamanho = BLOCO_S * TAXA_AUDIO * 2          # s16 = 2 bytes por amostra
+    rms, resto = [], b""
+    with subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE) as p:
+        while True:
+            bloco = p.stdout.read(tamanho)
+            if not bloco:
+                break
+            bloco = resto + bloco
+            inteiros = len(bloco) // (TAXA_AUDIO * 2)
+            resto = bloco[inteiros * TAXA_AUDIO * 2:]       # sobra do segundo incompleto
+            if not inteiros:
+                continue
+            a = np.frombuffer(bloco, dtype=np.int16, count=inteiros * TAXA_AUDIO)
+            a = a.astype(np.float32).reshape(inteiros, TAXA_AUDIO) / 32768
+            rms.append(np.sqrt(np.einsum("ij,ij->i", a, a) / TAXA_AUDIO))
+        erro = p.stderr.read().decode("utf-8", "replace")
+    if p.returncode:
+        raise RuntimeError(f"o ffmpeg não conseguiu ler o áudio de {video.name}: {erro.strip()[-300:]}")
+    if not rms:
+        raise RuntimeError(f"{video.name} não tem áudio legível")
+    db = 20 * np.log10(np.concatenate(rms) + 1e-6)
     return _soma_movel(db, janela) / janela
 
 

@@ -34,9 +34,20 @@ def baixar(url: str, pasta: Path, altura_max: int = 1080) -> Path:
     return Path(out[-1])
 
 
+_infos: dict[tuple[str, str], dict] = {}
+
+
 def _info(url: str, formato: str) -> dict:
+    """Dados do VOD no formato pedido, guardados por (url, formato).
+
+    Resolver isso é um `yt-dlp -J` inteiro, uns segundos. Como o `baixar_trecho` é chamado
+    uma vez por corte, sem a memória uma live de 10 cortes pagava 10 vezes pelo mesmo dado."""
+    if (d := _infos.get((url, formato))) is not None:
+        return d
     cmd = [sys.executable, "-m", "yt_dlp", url, "-f", formato, "-J"]
-    return json.loads(subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", check=True).stdout)
+    d = json.loads(subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", check=True).stdout)
+    _infos[(url, formato)] = d
+    return d
 
 
 def baixar_audio(url: str, pasta: Path) -> Path:
@@ -52,7 +63,7 @@ def baixar_trecho(url: str, inicio: float, fim: float, destino: Path, altura_max
     """Baixa só os pedaços de vídeo que cobrem [inicio, fim].
     Retorna em que segundo do VOD o arquivo baixado começa (para o corte acertar o tempo)."""
     info = _info(url, f"b[height<={altura_max}]/b")
-    return hls.baixar(info["url"], destino, inicio, fim, progresso=False)
+    return hls.baixar(info["url"], destino, inicio, fim, progresso=False, memoria=True)
 
 
 def inicio_do_vod(video: Path) -> float | None:

@@ -406,3 +406,9 @@ dialog::backdrop { background: rgba(10, 5, 22, .72); backdrop-filter: blur(3px);
 
 .capa-lado .enquadrar { font-size: 12px; padding: 4px 10px; }
 .capa-lado .enquadrar:hover:not(:disabled) { border-color: var(--ciano); color: var(--ciano); }
+
+#dlg-prompt textarea { width: 100%; font-family: ui-monospace, Consolas, monospace; font-size: 12px; }
+#dlg-prompt #pr-texto { background: var(--noite); color: var(--tinta-2); }
+#pr-copiado { color: var(--lima); font-weight: 400; letter-spacing: 0; }
+.linha-ia .prompt:hover:not(:disabled) { border-color: var(--ouro); color: var(--ouro);
+                                         box-shadow: 0 0 14px var(--ouro-fog); }

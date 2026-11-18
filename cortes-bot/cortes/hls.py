@@ -19,7 +19,15 @@ class Pedaco:
     init: str | None  # URL do segmento de inicialização (fMP4), se houver
 
 
-def ler_playlist(url_m3u8: str, cliente: httpx.Client) -> list[Pedaco]:
+_playlists: dict[str, list["Pedaco"]] = {}
+
+
+def ler_playlist(url_m3u8: str, cliente: httpx.Client, memoria: bool = False) -> list[Pedaco]:
+    """`memoria=True` guarda o resultado: o manifesto de um VOD já encerrado não muda mais,
+    e baixá-lo de novo a cada corte são milhares de linhas relidas à toa. Numa live em
+    andamento ele mudaria, mas o bot só trabalha com VOD."""
+    if memoria and (p := _playlists.get(url_m3u8)) is not None:
+        return p
     r = cliente.get(url_m3u8)
     r.raise_for_status()
     pedacos, t, dur, init = [], 0.0, 0.0, None
@@ -33,16 +41,18 @@ def ler_playlist(url_m3u8: str, cliente: httpx.Client) -> list[Pedaco]:
         elif linha and not linha.startswith("#"):
             pedacos.append(Pedaco(urljoin(url_m3u8, linha), t, dur, init))
             t += dur
+    if memoria:
+        _playlists[url_m3u8] = pedacos
     return pedacos
 
 
 def baixar(url_m3u8: str, destino: Path, inicio: float | None = None, fim: float | None = None,
-           workers: int = 32, progresso: bool = True) -> float:
+           workers: int = 32, progresso: bool = True, memoria: bool = False) -> float:
     """Baixa os pedaços que cobrem [inicio, fim] (ou tudo) e grava num único arquivo.
     Retorna o instante (s no VOD) em que o arquivo gravado começa."""
     destino.parent.mkdir(parents=True, exist_ok=True)
     with httpx.Client(timeout=30, follow_redirects=True, http2=False) as cliente:
-        pedacos = ler_playlist(url_m3u8, cliente)
+        pedacos = ler_playlist(url_m3u8, cliente, memoria)
         if inicio is not None or fim is not None:
             a, b = inicio or 0, fim if fim is not None else float("inf")
             pedacos = [p for p in pedacos if p.inicio + p.duracao > a and p.inicio < b]
