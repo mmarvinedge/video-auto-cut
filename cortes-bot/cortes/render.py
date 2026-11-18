@@ -63,8 +63,44 @@ def posicao_legenda(canal: dict | None) -> int:
     return L["h_cam"] + L["faixa"] // 2
 
 
+_HEX = re.compile(r"#?[0-9A-Fa-f]{6}")
+
+
+def _cores_validas(cores) -> list[str] | None:
+    """As cores da faixa, ou None se faltar alguma coisa. Uma cor escrita errada no config
+    (ex.: "#F80" ou "roxo") não pode derrubar o render de todos os cortes: volta a faixa preta."""
+    if not cores:
+        return None
+    if not isinstance(cores, list) or len(cores) < 2 or not all(isinstance(c, str) and _HEX.fullmatch(c.strip()) for c in cores):
+        print(f"Aviso: faixa_cores inválido no config ({cores!r}); use 2+ cores no formato \"#RRGGBB\". Faixa fica preta.")
+        return None
+    return [c.strip() for c in cores]
+
+
+def _faixa_gradiente(cores: list[str], altura: int) -> str:
+    """Fonte lavfi com um degradê horizontal PARADO (ex.: o pôr do sol laranja→rosa→roxo do GTA VI).
+
+    Não usa o filtro `gradients`: ele gira com o tempo mesmo com speed=0, e cada corte pegava o
+    degradê num ponto diferente. Aqui o geq desenha um quadro só (interpolação linear entre as
+    cores, em faixas iguais) e o loop repete esse quadro pelo vídeo inteiro."""
+    rgb = [tuple(int(c.lstrip("#")[i:i + 2], 16) for i in (0, 2, 4)) for c in cores]
+    passo = 1080 / (len(rgb) - 1)
+
+    def canal(k: int) -> str:
+        expr = str(rgb[-1][k])
+        for i in range(len(rgb) - 2, -1, -1):          # monta de trás pra frente: if(X<limite, trecho_i, resto)
+            a, b, x0 = rgb[i][k], rgb[i + 1][k], i * passo
+            trecho = f"{a}+({b - a})*(X-{x0:.1f})/{passo:.1f}"
+            expr = f"if(lt(X\\,{x0 + passo:.1f})\\,{trecho}\\,{expr})"
+        return expr
+
+    return (f"color=c=black:s=1080x{altura}:r=30:d=0.04,format=rgb24,"
+            f"geq=r='{canal(0)}':g='{canal(1)}':b='{canal(2)}',"
+            f"loop=loop=-1:size=1,setpts=N/30/TB")
+
+
 def _filtro(facecam: dict | None, credito: str, legenda: str | None = None,
-            conteudo: dict | None = None) -> str:
+            conteudo: dict | None = None, faixa_cores: list[str] | None = None) -> str:
     cred = (
         f"drawtext=fontfile='{FONTE}':text='{_texto_ffmpeg(credito)}':fontsize=44:fontcolor=white:"
         "borderw=4:bordercolor=black@0.85:x=(w-text_w)/2:y=h-200"
@@ -74,10 +110,15 @@ def _filtro(facecam: dict | None, credito: str, legenda: str | None = None,
     if facecam:
         fx, fy, fw, fh = (facecam[k] for k in ("x", "y", "w", "h"))
         L = _layout(facecam, conteudo)
+        topo = (f"[a]crop={fw}:{fh}:{fx}:{fy},scale=1080:{L['h_cam']},"
+                f"pad=1080:{L['h_cam'] + L['faixa']}:0:0:black")
+        if (faixa_cores := _cores_validas(faixa_cores)) and L["faixa"] > 0:
+            # a faixa da legenda vira um degradê: entra por cima do preto do pad
+            topo = (f"{topo}[topo_preto];{_faixa_gradiente(faixa_cores, L['faixa'])}[faixa];"
+                    f"[topo_preto][faixa]overlay=0:{L['h_cam']}:shortest=1")
         return (
             f"[0:v]split=2[a][b];"
-            f"[a]crop={fw}:{fh}:{fx}:{fy},scale=1080:{L['h_cam']},"
-            f"pad=1080:{L['h_cam'] + L['faixa']}:0:0:black[topo];"
+            f"{topo}[topo];"
             f"[b]crop={L['largura']}:{L['altura']}:{L['x']}:{L['y']},scale=1080:{L['h_jogo']}[jogo];"
             f"[topo][jogo]vstack=inputs=2,setsar=1,{cred}[v]"
         )
@@ -139,7 +180,8 @@ def renderizar(video: Path, inicio: float, fim: float, saida: Path, canal: dict,
         config.ffmpeg(), "-y", "-v", "error",
         "-ss", f"{inicio:.2f}", "-to", f"{fim:.2f}", "-i", str(Path(video).resolve()),
         "-filter_complex", _filtro(canal.get("facecam"), canal.get("credito", ""),
-                                   legenda.name if legenda else None, canal.get("conteudo")),
+                                   legenda.name if legenda else None, canal.get("conteudo"),
+                                   canal.get("faixa_cores")),
         "-map", "[v]", "-map", "0:a?",
         "-c:v", "libx264", "-preset", "slow", "-crf", "17", "-r", "30",
         "-c:a", "aac", "-b:a", "192k", "-ar", "48000",

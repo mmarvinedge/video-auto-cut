@@ -70,7 +70,29 @@ def cmd_enquadrar(cfg, a):
 
 def cmd_painel(cfg, a):
     from . import painel
+    if (cfg.get("painel") or {}).get("gravar_chat"):
+        gravar_chat_em_segundo_plano(cfg)
     painel.servir(config.RAIZ / cfg["pasta_dados"], a.porta)
+
+
+def gravar_chat_em_segundo_plano(cfg) -> None:
+    """O painel já precisa ficar aberto para a fila publicar; aproveita e grava o chat da Twitch.
+    Sem chat a detecção fica só com o áudio e confunde fala alta com momento bom.
+    Fora do ar não chega mensagem nenhuma, então não custa deixar ligado."""
+    import threading
+
+    tarefas = [(c["login"], config.pasta_canal(cfg, nome) / "chat")
+               for nome, c in cfg["canais"].items() if c["plataforma"] == "twitch"]
+    if not tarefas:
+        return
+
+    def rodar():
+        async def todos():
+            await asyncio.gather(*(chat_twitch.gravar(login, pasta) for login, pasta in tarefas))
+        asyncio.run(todos())
+
+    threading.Thread(target=rodar, name="chat-twitch", daemon=True).start()
+    print(f"Gravando o chat da Twitch junto com o painel: {', '.join(l for l, _ in tarefas)}")
 
 
 # ---------------------------------------------------------------- processar
@@ -89,7 +111,8 @@ def ouvir(cands: list[dict], midia: Path, cfg: dict, duracao_max: float, rotulo:
     for c in cands:
         c["palavras"] = tr.transcrever(midia, c["inicio"] - 6, c["fim"] + 6)
         c["inicio"], c["fim"] = fala.ajustar_bordas(c["palavras"], c["inicio"], c["fim"], duracao_max=duracao_max)
-        c["fala"] = fala.nota_fala(c["palavras"], c["inicio"], c["fim"], w["reacoes"])
+        c["fala"] = fala.nota_fala(c["palavras"], c["inicio"], c["fim"], w["reacoes"],
+                                   w.get("pausas"), w.get("peso_pausa", 2.0))
         c["texto"] = fala.texto(c["palavras"], c["inicio"], c["fim"])
     z_sinal = fala.zscores([c["nota"] for c in cands])
     z_fala = fala.zscores([c["fala"]["bruto"] for c in cands])

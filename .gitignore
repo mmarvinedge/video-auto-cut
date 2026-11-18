@@ -11,3 +11,6 @@ __pycache__/
 *.tmp
 Thumbs.db
 desktop.ini
+
+# cortes aprovados copiados pelo painel para subir à mão (vídeos grandes, locais)
+prontos/
