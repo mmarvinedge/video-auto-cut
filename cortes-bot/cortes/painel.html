@@ -34,6 +34,10 @@
     <span class="contagem" id="contagem"></span>
   </div>
 </header>
+<div id="falha-painel" class="falha-painel" role="alert" hidden>
+  <span id="falha-painel-texto"></span>
+  <button type="button" aria-label="Fechar aviso" onclick="this.parentElement.hidden = true">×</button>
+</div>
 
 <main>
   <section id="aba-lives" hidden>
@@ -152,9 +156,32 @@ const privTxt = i => i.plataforma === "youtube" ? " · " + esc(i.privacidade)
   : i.plataforma === "tiktok" ? " · " + esc(i.privacidade === "rascunho" ? "rascunho no app" : (E.privacidades_tiktok[i.privacidade] || i.privacidade)) : "";
 let filaItens = [];
 
+// Nunca lança: em qualquer falha devolve {ok: false, erro}, e as falhas do próprio painel
+// (fora do ar, código antigo, bug) aparecem também na faixa do topo, para nenhum botão
+// ficar mudo nem travado em "desabilitado".
 async function api(url, corpo) {
-  const r = await fetch(url, corpo === undefined ? {} : { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(corpo) });
-  return r.json();
+  let r;
+  try {
+    r = await fetch(url, corpo === undefined ? {} : { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(corpo) });
+  } catch {
+    return falhaPainel("o painel não respondeu. Veja se ele continua aberto no terminal.");
+  }
+  if (!(r.headers.get("Content-Type") || "").includes("application/json")) {
+    // Resposta em HTML numa rota da API: quem respondeu foi um painel com o código de antes
+    // da última atualização, que não conhece esta rota (a página já é a nova).
+    return falhaPainel(r.status === 404
+      ? "o painel aberto no terminal está com o código antigo: feche-o (Ctrl+C) e abra de novo com `python -m cortes painel`."
+      : `o painel respondeu com erro ${r.status}. O detalhe está no terminal.`);
+  }
+  const j = await r.json();
+  if (r.status === 404 || r.status >= 500) falhaPainel(j.erro || `erro ${r.status}`);
+  return j;
+}
+
+function falhaPainel(msg) {
+  $("#falha-painel-texto").textContent = msg;
+  $("#falha-painel").hidden = false;
+  return { ok: false, erro: msg };
 }
 
 // ---------------------------------------------------------------- abas

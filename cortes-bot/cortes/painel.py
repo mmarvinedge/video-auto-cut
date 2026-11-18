@@ -16,6 +16,7 @@ import re
 import shutil
 import subprocess
 import threading
+import traceback
 import unicodedata
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -390,6 +391,17 @@ def servir(dados: Path, porta: int = 8800, trabalhador: bool = True) -> None:
             self.end_headers()
             self.wfile.write(corpo)
 
+        def _rota_desconhecida(self):
+            # O caso comum: a página (lida do disco a cada acesso) já é a nova, mas este processo
+            # ainda roda o Python de antes de um `git pull`, e não conhece a rota que ela chama.
+            self._json({"ok": False, "erro": "o painel aberto no terminal está com o código antigo: "
+                        "feche-o (Ctrl+C) e abra de novo com `python -m cortes painel`"}, 404)
+
+        def _falha_interna(self, e: Exception):
+            traceback.print_exc()
+            self._json({"ok": False, "erro": f"erro interno do painel ({type(e).__name__}: {e}); "
+                        "o detalhe está no terminal"}, 500)
+
         def _html(self, texto: str, status=200):
             corpo = texto.encode()
             self.send_response(status)
@@ -500,16 +512,24 @@ def servir(dados: Path, porta: int = 8800, trabalhador: bool = True) -> None:
                         if isinstance(e, fila.ErroConta):
                             contas.atualizar(conta["id"], precisa_reconectar=True)
                         self._json({"ok": False, "erro": str(e)})
+                elif url.path.startswith("/api/"):
+                    self._rota_desconhecida()
                 else:
                     self.send_error(404)
             except (ValueError, KeyError, IndexError, FileNotFoundError, RuntimeError,
                     subprocess.SubprocessError, fila.ErroConta, fila.ErroCota, fila.ErroDefinitivo) as e:
                 if url.path.startswith("/oauth/"):
                     self._mensagem("Não deu certo", html_mod.escape(str(e)), 400)
+                elif url.path.startswith("/api/"):
+                    self._json({"ok": False, "erro": str(e) or "pedido inválido"}, 400)
                 else:
                     self.send_error(404)
             except (ConnectionAbortedError, ConnectionResetError, BrokenPipeError):
                 pass
+            except Exception as e:  # noqa: BLE001 - bug: o terminal mostra o traceback, o painel mostra o motivo
+                if not url.path.startswith("/api/"):
+                    raise
+                self._falha_interna(e)
 
         def do_POST(self):
             # Só aceita JSON vindo do próprio painel: outro site não consegue enviar
@@ -577,9 +597,13 @@ def servir(dados: Path, porta: int = 8800, trabalhador: bool = True) -> None:
                 elif m := re.fullmatch(r"/api/fila/([\w-]+)/(cancelar|tentar|agora)", caminho):
                     self._json({"ok": True, "item": fila.acao(m.group(1), m.group(2))})
                 else:
-                    self.send_error(404)
+                    self._rota_desconhecida()
             except (ValueError, KeyError, IndexError, FileNotFoundError, StopIteration, RuntimeError) as e:
                 self._json({"ok": False, "erro": str(e) or "pedido inválido"}, 400)
+            except (ConnectionAbortedError, ConnectionResetError, BrokenPipeError):
+                pass
+            except Exception as e:  # noqa: BLE001 - bug: o terminal mostra o traceback, o painel mostra o motivo
+                self._falha_interna(e)
 
         def _video(self, p: Path):
             """Serve o mp4 com suporte a Range (necessário para o player avançar/voltar)."""
