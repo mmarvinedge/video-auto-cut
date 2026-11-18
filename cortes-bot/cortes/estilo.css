@@ -354,6 +354,13 @@ dialog::backdrop { background: rgba(10, 5, 22, .72); backdrop-filter: blur(3px);
 .opcoes { display: flex; gap: 8px 18px; flex-wrap: wrap; font-size: 13px; color: var(--tinta-2); }
 .opcoes label { display: flex; gap: 6px; align-items: center; }
 
+.novo-canal {
+  display: flex; flex-direction: column; gap: 12px; max-width: 560px;
+  background: var(--noite-2); border: 1px solid var(--borda); border-radius: var(--r); padding: 16px 18px;
+}
+.novo-canal label { display: flex; flex-direction: column; gap: 6px; font-size: 13px; color: var(--tinta-2); }
+.novo-canal input { width: 100%; }
+
 #lv-lista { display: flex; flex-direction: column; gap: 10px; }
 
 .vod {

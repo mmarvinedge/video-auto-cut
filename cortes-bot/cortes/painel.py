@@ -554,6 +554,11 @@ def servir(dados: Path, porta: int = 8800, trabalhador: bool = True) -> None:
                                 "video": video.name})
                 elif caminho.startswith("/api/legenda/"):
                     self._json(gerar_legenda(dados, caminho[len("/api/legenda/"):]))
+                elif caminho == "/api/canais":
+                    nome, c = config.adicionar_canal(str(corpo.get("url") or ""),
+                                                     str(corpo.get("destino") or ""))
+                    self._json({"ok": True, "canal": nome,
+                                "destino": c.get("canal_destino", nome), "credito": c.get("credito", "")})
                 elif caminho == "/api/processar":
                     nome = str(corpo.get("canal") or "")
                     if not SEGURO.match(nome):

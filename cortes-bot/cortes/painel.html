@@ -42,8 +42,22 @@
         <select id="lv-canal" aria-label="Streamer"></select>
         <button id="lv-recarregar">Buscar VODs</button>
         <button id="lv-enquadrar">Ajustar enquadramento</button>
+        <button id="lv-novo">+ Novo streamer</button>
         <span class="contagem" id="lv-recado"></span>
       </div>
+      <form class="novo-canal" id="lv-form-novo" hidden>
+        <label>Página do streamer
+          <input id="lv-url" type="url" placeholder="https://www.twitch.tv/alanzoka" required>
+        </label>
+        <label>Nome do seu canal de cortes <span class="motivo">(opcional)</span>
+          <input id="lv-destino" type="text" placeholder="Cortes do Alanzoka" maxlength="80">
+        </label>
+        <div class="linha">
+          <button class="primario" type="submit">Adicionar</button>
+          <button type="button" id="lv-cancelar">Cancelar</button>
+          <span class="motivo" id="lv-novo-recado"></span>
+        </div>
+      </form>
       <div class="opcoes" role="group" aria-label="Opções do processamento">
         <label><input type="checkbox" value="--sem-whisper"> sem legendas (mais rápido)</label>
         <label><input type="checkbox" value="--sem-ia"> sem IA</label>
@@ -646,13 +660,19 @@ $("#contas").addEventListener("click", async e => {
 // ---------------------------------------------------------------- lives
 let lvCarregado = false, lvTimer = null;
 
-function iniciarLives() {
+function listarCanais(escolhido) {
   const sel = $("#lv-canal");
+  sel.innerHTML = Object.entries(E.canais).map(([n, c]) =>
+    `<option value="${esc(n)}">${esc(n)} → ${esc(c.destino)}</option>`).join("");
+  if (escolhido) sel.value = escolhido;
+}
+
+function iniciarLives() {
   if (!lvCarregado) {
-    sel.innerHTML = Object.entries(E.canais).map(([n, c]) =>
-      `<option value="${esc(n)}">${esc(n)} → ${esc(c.destino)}</option>`).join("");
+    listarCanais();
     lvCarregado = true;
-    buscarVods(false);
+    if ($("#lv-canal").value) buscarVods(false);
+    else $("#lv-lista").innerHTML = `<p class="vazio">Nenhum streamer cadastrado. Clique em “+ Novo streamer”.</p>`;
   }
   verTrabalho();
 }
@@ -698,6 +718,25 @@ async function verTrabalho() {
 }
 
 $("#lv-canal").addEventListener("change", () => buscarVods(false));
+$("#lv-novo").addEventListener("click", () => {
+  $("#lv-form-novo").hidden = !$("#lv-form-novo").hidden;
+  if (!$("#lv-form-novo").hidden) $("#lv-url").focus();
+});
+$("#lv-cancelar").addEventListener("click", () => { $("#lv-form-novo").hidden = true; });
+$("#lv-form-novo").addEventListener("submit", async e => {
+  e.preventDefault();
+  const botao = e.target.querySelector("button[type=submit]");
+  botao.disabled = true;
+  $("#lv-novo-recado").textContent = "salvando…";
+  const r = await api("/api/canais", { url: $("#lv-url").value, destino: $("#lv-destino").value });
+  botao.disabled = false;
+  if (!r.ok) { $("#lv-novo-recado").textContent = r.erro; return; }
+  E.canais[r.canal] = { destino: r.destino, credito: r.credito };
+  listarCanais(r.canal);
+  $("#lv-form-novo").hidden = true;
+  $("#lv-url").value = $("#lv-destino").value = $("#lv-novo-recado").textContent = "";
+  buscarVods(true);
+});
 $("#lv-recarregar").addEventListener("click", () => buscarVods(true));
 $("#lv-enquadrar").addEventListener("click", async e => {
   e.target.disabled = true;
