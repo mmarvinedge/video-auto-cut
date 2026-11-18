@@ -203,7 +203,7 @@ def linha_da_fila(page: Page, titulo: str) -> Locator:
     return page.locator("#fila tbody tr", has_text=titulo).first
 
 
-def postar_direto(page: Page, base: str, conta: dict) -> None:
+def postar_direto(page: Page, base: str, conta: dict, abrir_post: bool = True) -> None:
     card = proximo_card(page)
     titulo = card.locator(".titulo").input_value()
     legenda(page, "Step 2 · Content Posting API — Direct Post (video.publish). The creator reviews the clip "
@@ -268,7 +268,7 @@ def postar_direto(page: Page, base: str, conta: dict) -> None:
     legenda(page, "Posted. The queue shows the result and a link to the video on TikTok.", 5)
     apagar_destaque(linha)
     url = (item.get("resultado") or {}).get("url") or ""
-    if url.startswith("http"):
+    if abrir_post and url.startswith("http"):
         legenda(page, "Opening the post on TikTok…", 1.5)
         page.goto(url)
         pausa(9)
@@ -334,10 +334,14 @@ def main() -> None:
     final = pasta / f"demo_tiktok_{datetime.now():%Y-%m-%d_%H%M}.mp4"
 
     with sync_playwright() as pw:
-        navegador = pw.chromium.launch(headless=False, slow_mo=120)
-        ctx = navegador.new_context(viewport=TAMANHO, record_video_dir=str(pasta / "bruto"),
-                                    record_video_size=TAMANHO, locale="en-US")
-        page = ctx.new_page()
+        # Perfil próprio e persistente: depois de um login no TikTok, as próximas gravações já
+        # entram logadas e só mostram o "Authorize", sem novo código por e-mail.
+        ctx = pw.chromium.launch_persistent_context(
+            str(pasta / "perfil"), headless=False, slow_mo=120, viewport=TAMANHO, locale="en-US",
+            record_video_dir=str(pasta / "bruto"), record_video_size=TAMANHO)
+        for extra in ctx.pages[1:]:
+            extra.close()
+        page = ctx.pages[0] if ctx.pages else ctx.new_page()
         try:
             page.goto(f"{base}/#revisao")
             page.wait_for_selector("#lista .card, #lista .vazio")
@@ -346,8 +350,11 @@ def main() -> None:
             if not a.sem_vinculo:
                 vincular(page)
             conta = conta_tiktok(base, a.conta)
+            # Um post "Só eu" só aparece para quem está logado na conta; sem login, abrir o link
+            # mostraria "vídeo indisponível" no meio da demonstração.
+            logado = any(c["name"] == "sessionid" for c in ctx.cookies("https://www.tiktok.com"))
             if not a.sem_direto:
-                postar_direto(page, base, conta)
+                postar_direto(page, base, conta, abrir_post=logado)
             if not a.sem_rascunho:
                 enviar_rascunho(page, base, conta)
             legenda(page, "End of demo · Login Kit (user.info.basic) + Content Posting API "
@@ -355,7 +362,6 @@ def main() -> None:
         finally:
             video = page.video
             ctx.close()          # é ao fechar que o Playwright termina de gravar o arquivo
-            navegador.close()
             bruto = Path(video.path()) if video else None
 
     if bruto and bruto.exists():
