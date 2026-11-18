@@ -245,9 +245,18 @@ def abrir_oficina(dados: Path, nome_canal: str, video: Path, porta: int = 8810) 
     return f"http://localhost:{porta}"
 
 
+def _guardar_campo(arq: Path, lista: str, idx: int, campo: str, valor) -> None:
+    with _trava:
+        d = json.loads(arq.read_text(encoding="utf-8"))
+        d[lista][idx][campo] = valor
+        tmp = arq.with_suffix(".tmp")
+        tmp.write_text(json.dumps(d, ensure_ascii=False, indent=2), encoding="utf-8")
+        tmp.replace(arq)
+
+
 def rerenderizar(dados: Path, ident: str) -> dict:
     """Gera de novo o mp4 desse corte com o enquadramento atual, reaproveitando o trecho já baixado."""
-    from . import enquadrar, legendas, render
+    from . import enquadrar, legendas, render, vod
 
     arq, lista, idx = _localizar(dados, ident)
     d = json.loads(arq.read_text(encoding="utf-8"))
@@ -262,9 +271,20 @@ def rerenderizar(dados: Path, ident: str) -> dict:
         raise ValueError("o trecho bruto desse corte não está mais em disco: reprocesse a live")
     cfg = config.carregar()
     canal = config.canal(cfg, d.get("canal", ident.split("/")[0]))
-    # o trecho de HLS guarda o tempo do VOD: o início dele é o deslocamento do corte
-    comeco = enquadrar.intervalo(fonte)[0]
+    # Em que segundo do VOD o trecho começa: guardado no processamento; nos cortes de antes
+    # disso, recalculado pela lista de pedaços do VOD (o "start" do arquivo NÃO serve: é o
+    # relógio do stream, que no bisteconee anda ~61 s à frente, e recortava fora do trecho).
+    comeco = c.get("trecho_inicio")
+    if comeco is None:
+        url = vod.url_do_vod(config.absoluto(d["video"])) if d.get("video") else None
+        if not url:
+            raise ValueError("não sei de qual VOD esse corte veio (falta o .info.json): reprocesse a live")
+        comeco = vod.inicio_do_trecho(url, c["inicio"], c["fim"])
+        _guardar_campo(arq, lista, idx, "trecho_inicio", round(comeco, 3))
     ini, fim = c["inicio"] - comeco, c["fim"] - comeco
+    a, b = enquadrar.intervalo(fonte)
+    if ini < -0.5 or fim > (b - a) + 0.5:
+        raise ValueError(f"o trecho bruto ({b - a:.0f}s) não cobre esse corte ({ini:.1f}–{fim:.1f}s): reprocesse a live")
     ass = None
     if c.get("palavras"):
         ass = legendas.gerar_ass(c["palavras"], c["inicio"], c["fim"], destino.with_suffix(".ass"),
