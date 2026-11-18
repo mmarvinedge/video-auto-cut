@@ -267,10 +267,14 @@ def gerar_compilacoes(comps: list[dict], curtos: list[dict], pasta_saida: Path, 
 
 
 def cmd_processar(cfg, a):
-    canal = config.canal(cfg, a.canal)
+    from . import enquadrar
+
     pasta = config.pasta_canal(cfg, a.canal)
     video = Path(a.video)
     base = video.stem.removesuffix("_audio")
+    # o enquadramento desta live manda no do canal: o streamer muda a cam de lugar entre lives
+    canal = enquadrar.aplicar(config.canal(cfg, a.canal), config.RAIZ / cfg["pasta_dados"],
+                              a.canal, vod=base)
     inicio = a.inicio or vod.inicio_do_vod(video)
     arquivos_chat = [Path(p) for p in a.chat] if a.chat else sorted((pasta / "chat").glob("*.jsonl"))
     msgs = None

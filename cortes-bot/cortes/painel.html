@@ -246,24 +246,41 @@ function card(c) {
     </div></article>`;
 }
 
+function recarregarVideo(el, c) {
+  $("video", el).src = `/video/${encodeURI(c.id)}?r=${Date.now()}`;
+  $(".capa-img", el).src = `/capa/${encodeURI(c.id)}?t=${c.capa_t ?? 0}&r=${Date.now()}`;
+}
+
+/** Acompanha o trabalho até ele acabar e troca o vídeo do card. `esperarComecar` serve para o
+ *  enquadramento, onde quem dispara a recompilação é o Aplicar da oficina, noutra aba. */
+async function acompanhar(el, c, esperarComecar = false) {
+  const recado = $(".salvo", el);
+  for (let i = 0; i < 400; i++) {                      // ffmpeg em crf 17 leva uns minutos
+    await new Promise(ok => setTimeout(ok, 3000));
+    const t = await api("/api/trabalho");
+    if (esperarComecar) {
+      if (!t.atual || !t.atual.rodando) continue;
+      esperarComecar = false;
+    }
+    if (!t.atual) continue;
+    if (t.atual.rodando) { recado.textContent = t.atual.passo + "…"; continue; }
+    if (t.atual.erro) { recado.textContent = t.atual.erro; return; }
+    recado.textContent = "pronto";
+    recarregarVideo(el, c);
+    return;
+  }
+  recado.textContent = "demorou demais; veja o log na aba Lives";
+}
+
 async function rerender(el, c) {
   const recado = $(".salvo", el);
   const r = await api("/api/rerender/" + encodeURI(c.id), {});
   if (!r.ok) { recado.textContent = r.erro; return; }
   recado.textContent = "re-renderizando…";
-  for (let i = 0; i < 300; i++) {                      // ffmpeg em crf 17 leva uns minutos
-    await new Promise(ok => setTimeout(ok, 3000));
-    const t = await api("/api/trabalho");
-    if (!t.atual || t.atual.rodando) continue;
-    if (t.atual.erro) { recado.textContent = t.atual.erro; return; }
-    recado.textContent = "pronto";
-    const v = $("video", el);
-    v.src = `/video/${encodeURI(c.id)}?r=${Date.now()}`;
-    $(".capa-img", el).src = `/capa/${encodeURI(c.id)}?t=${c.capa_t ?? 0}&r=${Date.now()}`;
-    return;
-  }
-  recado.textContent = "demorou demais; veja o log na aba Lives";
+  await acompanhar(el, c);
 }
+
+const esperarRecompilar = (el, c) => acompanhar(el, c, true);
 
 // ------------------------------------------------- prompt para colar noutro chat
 let promptAlvo = null;
@@ -375,11 +392,9 @@ document.addEventListener("click", async e => {
     const r = await api("/api/enquadrar", { canal: c.canal, corte_id: c.id });
     b.disabled = false;
     if (!r.ok) { recado.textContent = r.erro; return; }
-    recado.textContent = "";
     window.open(r.url, "enquadramento");
-    if (confirm("Ajuste e salve na aba que abriu.\n\nO enquadramento novo vale para os próximos cortes — este aqui já está renderizado. Re-renderizar este corte agora?")) {
-      rerender(el, c);
-    }
+    recado.textContent = "ajuste na outra aba; ao aplicar, este corte é recompilado";
+    esperarRecompilar(el, c);
   }
   if (e.target.classList.contains("rerender")) rerender(el, c);
   if (e.target.classList.contains("prompt")) {
@@ -695,6 +710,7 @@ async function buscarVods(atualizar) {
         <h3>${esc(v.titulo || "(sem título)")}</h3>
         <a class="motivo" href="${esc(v.url)}" target="_blank" rel="noreferrer">${esc(v.url)}</a>
       </div>
+      <button class="enquadrar-vod" data-url="${esc(v.url)}">Enquadrar</button>
       <button class="primario" data-url="${esc(v.url)}" data-titulo="${esc(v.titulo || "")}">Processar</button>
     </article>`).join("") : `<p class="vazio">Nenhum VOD arquivado nesse canal.</p>`;
 }
@@ -749,6 +765,15 @@ $("#lv-enquadrar").addEventListener("click", async e => {
 $("#lv-lista").addEventListener("click", async e => {
   const b = e.target.closest("button[data-url]");
   if (!b) return;
+  if (b.classList.contains("enquadrar-vod")) {
+    b.disabled = true;
+    $("#lv-recado").textContent = "baixando 3 trechos da live…";
+    const r = await api("/api/enquadrar", { canal: $("#lv-canal").value, url: b.dataset.url });
+    b.disabled = false;
+    $("#lv-recado").textContent = r.ok ? "enquadre na aba que abriu" : r.erro;
+    if (r.ok) window.open(r.url, "enquadramento");
+    return;
+  }
   if (!confirm(`Processar "${b.dataset.titulo || b.dataset.url}"?
 
 Baixa o áudio da live inteira e gera os cortes. Pode levar bastante tempo.`)) return;

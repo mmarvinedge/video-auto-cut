@@ -53,6 +53,11 @@ def _tirar(video: Path, destino: Path, t: float, t_rel: float, curto: bool) -> P
     return None
 
 
+def frame(video: Path, destino: Path, t: float, t_rel: float = 0.0, curto: bool = True) -> Path | None:
+    """Um frame avulso de `video`, para quem monta a própria lista (as amostras do VOD inteiro)."""
+    return _tirar(video, destino, t, t_rel, curto)
+
+
 def extrair_frames(video: Path, destino: Path) -> list[Path]:
     """Um frame por fração da duração, em 1920x1080 (o mesmo referencial dos recortes)."""
     destino.mkdir(parents=True, exist_ok=True)
@@ -76,17 +81,65 @@ def _padrao(canal: dict) -> dict:
     return {"cam": cam, "conteudo": cont}
 
 
-def arquivo(dados: Path, nome_canal: str) -> Path:
+def arquivo(dados: Path, nome_canal: str, vod: str = "", corte: str = "") -> Path:
+    """Onde mora cada enquadramento.
+
+    Por corte e por VOD em `enquadramento/`, porque o streamer muda a cam de lugar entre lives
+    (e às vezes no meio de uma). O do canal continua no arquivo antigo, como ponto de partida.
+    """
+    pasta = dados / nome_canal / "enquadramento"
+    if corte:
+        return pasta / f"corte_{corte.replace('/', '_')}.json"
+    if vod:
+        return pasta / f"{vod}.json"
     return dados / nome_canal / "enquadramento.json"
 
 
-def criar(video: Path, nome_canal: str, canal: dict, dados: Path, porta: int = 8810) -> HTTPServer:
-    """Monta o servidor sem subir: quem chama decide se bloqueia (CLI) ou roda numa thread (painel)."""
+def _ler(p: Path) -> dict:
+    try:
+        d = json.loads(p.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {}
+    return {k: v for k, v in d.items() if k in ("cam", "conteudo") and v}
+
+
+def resolver(dados: Path, nome_canal: str, canal: dict, vod: str = "", corte: str = "") -> dict:
+    """O enquadramento que vale para este corte: o dele, senão o do VOD, senão o do canal.
+
+    O ajuste de um corte fica preso a ele de propósito: quando a cam anda no meio da live é
+    exceção, e espalhar o conserto pelos vizinhos estragaria os que estavam certos.
+    """
+    valores = {}
+    for p in (arquivo(dados, nome_canal), arquivo(dados, nome_canal, vod=vod) if vod else None,
+              arquivo(dados, nome_canal, corte=corte) if corte else None):
+        if p is not None:
+            valores.update(_ler(p))
+    return valores
+
+
+def aplicar(canal: dict, dados: Path, nome_canal: str, vod: str = "", corte: str = "") -> dict:
+    """Cópia do canal com o `facecam`/`conteudo` que valem aqui."""
+    v = resolver(dados, nome_canal, canal, vod, corte)
+    c = dict(canal)
+    if v.get("cam"):
+        c["facecam"] = v["cam"]
+    if v.get("conteudo"):
+        c["conteudo"] = v["conteudo"]
+    return c
+
+
+def criar(video: Path, nome_canal: str, canal: dict, dados: Path, porta: int = 8810,
+          destino: Path | None = None, alvo: str = "", ao_salvar=None,
+          frames: list[Path] | None = None) -> HTTPServer:
+    """Monta o servidor sem subir: quem chama decide se bloqueia (CLI) ou roda numa thread (painel).
+
+    `destino` diz de quem é o enquadramento (canal, VOD ou corte); `alvo` é o que a página escreve
+    no botão, e `ao_salvar` é chamado depois de gravar — é por onde o painel recompila o corte.
+    """
     pagina = Path(__file__).parent / "enquadrar.html"
-    frames = extrair_frames(video, dados / nome_canal / "_frames")
-    destino = arquivo(dados, nome_canal)
-    salvo = json.loads(destino.read_text(encoding="utf-8")) if destino.exists() else {}
-    inicial = {**_padrao(canal), **{k: v for k, v in salvo.items() if k in ("cam", "conteudo")}}
+    frames = frames or extrair_frames(video, dados / nome_canal / "_frames")
+    destino = destino or arquivo(dados, nome_canal)
+    inicial = {**_padrao(canal), **_ler(destino)}
     hosts_ok = {f"localhost:{porta}", f"127.0.0.1:{porta}"}
 
     class H(BaseHTTPRequestHandler):
@@ -109,7 +162,7 @@ def criar(video: Path, nome_canal: str, canal: dict, dados: Path, porta: int = 8
                              "text/css; charset=utf-8")
             elif caminho == "/api/dados":
                 self._enviar(json.dumps({
-                    "canal": nome_canal, "video": video.name,
+                    "canal": nome_canal, "video": video.name, "alvo": alvo,
                     "frames": [f"/frame/{i}" for i in range(len(frames))], **inicial,
                 }, ensure_ascii=False).encode(), "application/json; charset=utf-8")
             elif caminho.startswith("/frame/"):
@@ -137,7 +190,13 @@ def criar(video: Path, nome_canal: str, canal: dict, dados: Path, porta: int = 8
             print(f"Enquadramento salvo em {destino}")
             print(f"  cam      {saida['cam']}")
             print(f"  conteudo {saida['conteudo']}")
-            self._enviar(json.dumps({"ok": True, "destino": str(destino)}).encode(),
+            resposta = {"ok": True, "destino": str(destino)}
+            if ao_salvar:
+                try:
+                    resposta["depois"] = ao_salvar(saida)
+                except (ValueError, RuntimeError, OSError) as e:
+                    resposta["aviso"] = str(e)
+            self._enviar(json.dumps(resposta, ensure_ascii=False).encode(),
                          "application/json; charset=utf-8")
 
         def log_message(self, *_):

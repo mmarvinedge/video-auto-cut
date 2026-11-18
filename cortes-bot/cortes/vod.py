@@ -50,6 +50,12 @@ def _info(url: str, formato: str) -> dict:
     return d
 
 
+def informacoes(url: str, altura_max: int = 1080) -> dict:
+    """{"id", "duracao"} do VOD, da mesma memória que o `baixar_trecho` usa."""
+    d = _info(url, f"b[height<={altura_max}]/b")
+    return {"id": d.get("id") or "", "duracao": float(d.get("duration") or 0.0)}
+
+
 def baixar_audio(url: str, pasta: Path) -> Path:
     """Baixa só o áudio do VOD (~15x menor que 720p) em paralelo. Basta para a detecção."""
     info = _info(url, "Audio_Only/ba/worst")

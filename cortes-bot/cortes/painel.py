@@ -230,15 +230,69 @@ def trecho_bruto(dados: Path, ident: str) -> Path | None:
     return bruto if bruto.exists() else None
 
 
-def abrir_oficina(dados: Path, nome_canal: str, video: Path, porta: int = 8810) -> str:
-    """Sobe (ou troca o vídeo d)a ferramenta de enquadramento, sem travar o painel."""
+AMOSTRA = (0.08, 0.5, 0.92)   # começo, meio e fim: é onde dá para ver se a cam andou de lugar
+
+
+def amostra_do_vod(dados: Path, nome_canal: str, url: str) -> tuple[Path, str, list[Path]]:
+    """Três frames de uma live ainda não processada: começo, meio e fim.
+
+    Baixa só 4 segundos em cada ponto (o VOD inteiro são dezenas de GB), para dar para enquadrar
+    antes de processar — e para a cam fora do lugar aparecer antes de render nenhum.
+    """
+    from . import enquadrar, vod as mod_vod
+
+    info = mod_vod.informacoes(url)
+    ident, duracao = info["id"], info["duracao"]
+    if not duracao:
+        raise ValueError("não consegui ler a duração desse VOD")
+    pasta = dados / nome_canal / "vods" / "trechos"
+    pasta.mkdir(parents=True, exist_ok=True)
+    quadros = dados / nome_canal / "_frames"
+    quadros.mkdir(parents=True, exist_ok=True)
+
+    frames, primeiro = [], None
+    for i, f in enumerate(AMOSTRA, 1):
+        t = duracao * f
+        trecho = pasta / f"{ident}_amostra{i}.mp4"
+        try:
+            comeco = mod_vod.baixar_trecho(url, t, t + 4, trecho)
+        except (subprocess.CalledProcessError, RuntimeError, OSError) as e:
+            raise RuntimeError(f"não deu para baixar a amostra em {t / 3600:.1f}h: {e}") from e
+        primeiro = primeiro or trecho
+        alvo = quadros / f"frame{i}.png"
+        alvo.unlink(missing_ok=True)
+        if enquadrar.frame(trecho, alvo, comeco + 1, 1.0):
+            frames.append(alvo)
+    if not frames:
+        raise RuntimeError("não consegui tirar nenhum frame desse VOD")
+    return primeiro, ident, frames
+
+
+def abrir_oficina(dados: Path, nome_canal: str, video: Path, porta: int = 8810,
+                  vod: str = "", corte: str = "", frames: list[Path] | None = None) -> str:
+    """Sobe (ou troca o vídeo d)a ferramenta de enquadramento, sem travar o painel.
+
+    Com `corte`, o ajuste fica só naquele corte e salvar já manda recompilá-lo — é o que faz o
+    botão da Revisão valer alguma coisa. Com `vod`, vale para a live inteira dali em diante.
+    """
     from . import enquadrar
 
     if srv := _oficina.get("srv"):
         srv.shutdown()
         srv.server_close()
     cfg = config.carregar()
-    srv = enquadrar.criar(video, nome_canal, config.canal(cfg, nome_canal), dados, porta)
+    canal = config.canal(cfg, nome_canal)
+    destino = enquadrar.arquivo(dados, nome_canal, vod=vod, corte=corte)
+    alvo = "este corte" if corte else (f"a live {vod}" if vod else "o canal")
+
+    def depois(_):
+        if not corte:
+            return None
+        return trabalho.comecar_funcao("recompilando o corte com o enquadramento novo",
+                                       nome_canal, lambda log: str(rerenderizar(dados, corte)["arquivo"]))
+
+    srv = enquadrar.criar(video, nome_canal, canal, dados, porta, destino=destino, alvo=alvo,
+                          ao_salvar=depois, frames=frames)
     _oficina["srv"] = srv
     threading.Thread(target=srv.serve_forever, daemon=True).start()
     return f"http://localhost:{porta}"
@@ -260,15 +314,30 @@ def rerenderizar(dados: Path, ident: str) -> dict:
     if fonte is None:
         raise ValueError("o trecho bruto desse corte não está mais em disco: reprocesse a live")
     cfg = config.carregar()
-    canal = config.canal(cfg, d.get("canal", ident.split("/")[0]))
-    # o trecho de HLS guarda o tempo do VOD: o início dele é o deslocamento do corte
-    comeco = enquadrar.intervalo(fonte)[0]
+    nome_canal = d.get("canal", ident.split("/")[0])
+    # o id do corte traz o arquivo de áudio (v123_audio); o enquadramento é do VOD (v123)
+    canal = enquadrar.aplicar(config.canal(cfg, nome_canal), dados, nome_canal,
+                              vod=ident.split("/")[1].removesuffix("_audio"), corte=ident)
+    # o trecho de HLS costuma guardar o tempo do VOD (começa em 17679s, por exemplo), e aí o
+    # início do corte é o deslocamento dentro dele. Mas nem todo trecho vem assim: alguns começam
+    # em zero. Pedir 17679s de um arquivo de 56s faz o ffmpeg devolver um mp4 vazio e sair com
+    # sucesso — silêncio que já custou um corte quebrado. Quando a conta não cabe no arquivo,
+    # o trecho é o próprio corte.
+    comeco, final = enquadrar.intervalo(fonte)
+    duracao = final - comeco
     ini, fim = c["inicio"] - comeco, c["fim"] - comeco
+    if not (-0.5 <= ini < fim <= duracao + 1):
+        ini, fim = 0.0, min(duracao, c["fim"] - c["inicio"])
     ass = None
     if c.get("palavras"):
         ass = legendas.gerar_ass(c["palavras"], c["inicio"], c["fim"], destino.with_suffix(".ass"),
                                  render.posicao_legenda(canal))
     render.renderizar(fonte, ini, fim, destino, canal, ass)
+    # o ffmpeg sai com sucesso mesmo quando não escreveu quadro nenhum; sem esta conferência
+    # o painel diz "pronto" e troca um corte bom por um arquivo vazio
+    if destino.stat().st_size < 100_000:
+        raise RuntimeError(f"a recompilação saiu vazia ({destino.stat().st_size} bytes): "
+                           f"o trecho bruto não cobre {ini:.0f}s–{fim:.0f}s")
     _fichas.clear()
     rev = c.get("revisao") or {}
     if rev.get("status") == "aprovado":   # o que já foi para prontos tem que acompanhar
@@ -540,18 +609,22 @@ def servir(dados: Path, porta: int = 8800, trabalhador: bool = True) -> None:
                     nome = str(corpo.get("canal") or "")
                     if not SEGURO.match(nome):
                         raise ValueError("canal inválido")
-                    if ident := corpo.get("corte_id"):
-                        video = trecho_bruto(dados, str(ident))
+                    ident, vod, frames = str(corpo.get("corte_id") or ""), "", None
+                    if ident:
+                        video = trecho_bruto(dados, ident)
                         if video is None:
                             raise ValueError("o trecho bruto desse corte não está mais em disco")
+                        vod = ident.split("/")[1].removesuffix("_audio")
+                    elif url_vod := str(corpo.get("url") or ""):
+                        video, vod, frames = amostra_do_vod(dados, nome, url_vod)
                     else:
                         trechos = sorted((dados / nome / "vods" / "trechos").glob("*_bruto.mp4"),
                                          key=lambda p: p.stat().st_mtime, reverse=True)
                         if not trechos:
                             raise ValueError(f"nenhum trecho de {nome} baixado ainda: processe um VOD primeiro")
                         video = trechos[0]
-                    self._json({"ok": True, "url": abrir_oficina(dados, nome, video),
-                                "video": video.name})
+                    self._json({"ok": True, "video": video.name,
+                                "url": abrir_oficina(dados, nome, video, vod=vod, corte=ident, frames=frames)})
                 elif caminho.startswith("/api/legenda/"):
                     self._json(gerar_legenda(dados, caminho[len("/api/legenda/"):]))
                 elif caminho == "/api/canais":

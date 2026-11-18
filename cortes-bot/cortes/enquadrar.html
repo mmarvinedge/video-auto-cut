@@ -154,13 +154,18 @@ document.getElementById('salvar').addEventListener('click', async () => {
     body: JSON.stringify({ cam: caixas.cam, conteudo: caixas.conteudo }),
   });
   const r = await resp.json();
-  document.getElementById('recado').textContent = r.ok ? 'Salvo. Pode fechar e processar.' : 'Falhou.';
+  document.getElementById('recado').textContent = !r.ok ? 'Falhou.'
+    : r.aviso ? 'Salvo, mas não deu para recompilar: ' + r.aviso
+    : r.depois ? 'Salvo. Recompilando o corte — acompanhe no painel; pode fechar esta aba.'
+    : 'Salvo. Pode fechar e processar.';
 });
 
 (async () => {
   dados = await (await fetch('/api/dados')).json();
   caixas = { cam: { ...dados.cam }, conteudo: { ...dados.conteudo } };
-  document.getElementById('canal').textContent = dados.canal;
+  document.getElementById('canal').textContent = dados.canal + (dados.alvo ? ' · ' + dados.alvo : '');
+  if (dados.alvo) document.getElementById('salvar').textContent =
+    dados.alvo === 'este corte' ? 'Aplicar e recompilar o corte' : 'Salvar enquadramento desta live';
   document.getElementById('arquivo').textContent = dados.video;
   const barra = document.getElementById('frames');
   imgs = await Promise.all(dados.frames.map(src => new Promise(ok => {
