@@ -273,6 +273,26 @@ function card(c) {
     </div></article>`;
 }
 
+// O Chrome só deixa abrir aba nova logo depois do clique, e a ferramenta de enquadramento leva
+// alguns segundos para extrair os quadros do vídeo (5 s num corte longo): abrindo depois da
+// resposta, o pop-up era bloqueado sem aviso. A aba abre já, vazia, e recebe o endereço depois.
+function abaDeEnquadramento() {
+  const aba = window.open("", "enquadramento");
+  try {
+    aba.document.body.innerHTML = '<p style="font:16px system-ui;padding:24px">Extraindo os quadros do vídeo…</p>';
+  } catch { /* a aba já estava na ferramenta (outra origem): só troca o endereço depois */ }
+  return aba;
+}
+function levarAba(aba, url) {
+  if (aba && !aba.closed) {
+    aba.location.href = url;
+    aba.focus();
+    return "";
+  }
+  // bloqueada mesmo assim (ex.: bloqueador de pop-up do usuário): fica o link para abrir à mão
+  return `<a href="${esc(url)}" target="enquadramento">Abrir a ferramenta de enquadramento</a>. `;
+}
+
 async function rerender(el, c) {
   const recado = $(".salvo", el);
   const r = await api("/api/rerender/" + encodeURI(c.id), {});
@@ -398,15 +418,16 @@ document.addEventListener("click", async e => {
   }
   if (e.target.classList.contains("enquadrar")) {
     const b = e.target, recado = $(".salvo", el);
-    b.disabled = true; recado.textContent = "abrindo…";
+    const aba = abaDeEnquadramento();
+    b.disabled = true; recado.textContent = "extraindo os quadros…";
     const r = await api("/api/enquadrar", { canal: c.canal, corte_id: c.id });
     b.disabled = false;
-    if (!r.ok) { recado.textContent = r.erro; return; }
-    recado.textContent = "";
-    window.open(r.url, "enquadramento");
-    if (confirm("Ajuste e salve na aba que abriu.\n\nO enquadramento novo vale para os próximos cortes — este aqui já está renderizado. Re-renderizar este corte agora?")) {
-      rerender(el, c);
-    }
+    if (!r.ok) { aba?.close(); recado.textContent = r.erro; return; }
+    const link = levarAba(aba, r.url);
+    // Só depois de salvar na outra aba faz sentido re-renderizar: por isso é um botão, e não uma
+    // pergunta na hora (que, respondida antes de salvar, re-renderizava com o enquadramento antigo).
+    recado.innerHTML = `${link}Ajuste e clique em Salvar na aba do enquadramento. Ele vale para os próximos cortes;
+      para refazer este com ele: <button class="rerender" type="button">re-renderizar este corte</button>`;
   }
   if (e.target.classList.contains("rerender")) rerender(el, c);
   if (e.target.classList.contains("prompt")) {
@@ -766,12 +787,13 @@ $("#lv-form-novo").addEventListener("submit", async e => {
 });
 $("#lv-recarregar").addEventListener("click", () => buscarVods(true));
 $("#lv-enquadrar").addEventListener("click", async e => {
+  const aba = abaDeEnquadramento();
   e.target.disabled = true;
+  $("#lv-recado").textContent = "extraindo os quadros…";
   const r = await api("/api/enquadrar", { canal: $("#lv-canal").value });
   e.target.disabled = false;
-  if (!r.ok) { $("#lv-recado").textContent = r.erro; return; }
-  $("#lv-recado").textContent = "medindo em " + r.video;
-  window.open(r.url, "enquadramento");
+  if (!r.ok) { aba?.close(); $("#lv-recado").textContent = r.erro; return; }
+  $("#lv-recado").innerHTML = levarAba(aba, r.url) + "medindo em " + esc(r.video);
 });
 $("#lv-lista").addEventListener("click", async e => {
   const b = e.target.closest("button[data-url]");
