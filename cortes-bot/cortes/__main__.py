@@ -4,6 +4,7 @@
   python -m cortes baixar <canal> <url_do_vod>        baixa o VOD inteiro (+ info com horário de início)
   python -m cortes baixar-audio <canal> <url_do_vod>  baixa só o áudio (bem mais leve; basta para processar)
   python -m cortes chat-twitch                        grava o chat ao vivo de todos os canais Twitch
+  python -m cortes chat-vod <canal> <url_do_vod>      baixa o chat de um VOD da Twitch já encerrado
   python -m cortes kick-assinar                       inscreve os canais Kick no webhook de chat (API oficial)
   python -m cortes kick-webhook                       recebe o chat do Kick via webhook
   python -m cortes processar <canal> <video.mp4>      gera as duas versões: curtos (Shorts/Reels) e TikTok (>1 min)
@@ -36,6 +37,32 @@ def cmd_baixar_audio(cfg, a):
     pasta = config.pasta_canal(cfg, a.canal) / "vods"
     print(f"Baixando só o áudio para {pasta} ...")
     print(vod.baixar_audio(a.url, pasta))
+
+
+def cmd_chat_vod(cfg, a):
+    from . import chat_vod
+
+    c = config.canal(cfg, a.canal)
+    if c["plataforma"] != "twitch":
+        raise SystemExit(f"{a.canal} é da {c['plataforma']}: o chat de VOD só existe para a Twitch")
+    pasta = config.pasta_canal(cfg, a.canal)
+    ident = chat_vod.id_do_vod(a.url)
+    destino = pasta / "chat" / f"vod_{ident}.jsonl"
+    if destino.exists() and not a.refazer:
+        raise SystemExit(f"{destino} já existe; use --refazer para baixar de novo")
+
+    inicio = a.inicio
+    if inicio is None:
+        # o yt-dlp salva como v<id>_audio.mp4, com o .info.json ao lado
+        baixados = sorted((pasta / "vods").glob(f"*{ident}*.mp4"))
+        inicio = next((t for p in baixados if (t := vod.inicio_do_vod(p))), None)
+    if inicio is None:
+        raise SystemExit("não sei a que horas essa live começou: baixe o áudio antes (o .info.json traz o "
+                         "horário) ou passe --inicio com o epoch do começo")
+
+    print(f"Baixando o chat do VOD {ident} para {destino} ...")
+    n = chat_vod.baixar(a.url, inicio, destino)
+    print(f"{n} mensagens salvas. Agora rode o `processar` de novo: ele lê esse arquivo junto com o áudio.")
 
 
 def cmd_chat_twitch(cfg, a):
@@ -305,6 +332,10 @@ def main():
     s = sub.add_parser("baixar"); s.add_argument("canal"); s.add_argument("url"); s.set_defaults(f=cmd_baixar)
     s = sub.add_parser("baixar-audio"); s.add_argument("canal"); s.add_argument("url"); s.set_defaults(f=cmd_baixar_audio)
     s = sub.add_parser("chat-twitch"); s.set_defaults(f=cmd_chat_twitch)
+    s = sub.add_parser("chat-vod"); s.add_argument("canal"); s.add_argument("url")
+    s.add_argument("--inicio", type=float, help="epoch do começo da live (padrão: lê do .info.json do áudio)")
+    s.add_argument("--refazer", action="store_true", help="baixa de novo mesmo se o arquivo já existir")
+    s.set_defaults(f=cmd_chat_vod)
     s = sub.add_parser("kick-assinar"); s.set_defaults(f=cmd_kick_assinar)
     s = sub.add_parser("kick-webhook"); s.set_defaults(f=cmd_kick_webhook)
     s = sub.add_parser("painel"); s.add_argument("--porta", type=int, default=8800); s.set_defaults(f=cmd_painel)
