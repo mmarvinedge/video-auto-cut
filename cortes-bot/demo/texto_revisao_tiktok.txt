@@ -1,0 +1,9 @@
+video-auto-cut is a desktop app that runs on the creator's own computer. It cuts highlights from the creator's live streams and posts them to the creator's own TikTok account.
+
+Login Kit + user.info.basic: the creator clicks "Connect TikTok account", logs in on TikTok's authorization page (desktop flow with PKCE) and approves. We read the open_id, display name and username to show which account is connected.
+
+video.publish: every time the publish window opens, the app calls creator_info/query. It lists only the privacy levels TikTok returns, with no default; comment/duet/stitch start off and are greyed out if disabled; it shows the commercial content disclosure and the Music Usage consent. After the creator confirms, it calls video/init, uploads with FILE_UPLOAD and polls status/fetch.
+
+video.upload: the creator can instead send the video as a draft (inbox/video/init) and finish editing and posting it in the TikTok app.
+
+Nothing is posted without the creator's confirmation.
