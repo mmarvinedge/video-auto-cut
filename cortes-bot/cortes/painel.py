@@ -16,6 +16,7 @@ import re
 import shutil
 import subprocess
 import threading
+import traceback
 import unicodedata
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -236,23 +237,86 @@ def trecho_bruto(dados: Path, ident: str) -> Path | None:
     return bruto if bruto.exists() else None
 
 
-def abrir_oficina(dados: Path, nome_canal: str, video: Path, porta: int = 8810) -> str:
-    """Sobe (ou troca o vídeo d)a ferramenta de enquadramento, sem travar o painel."""
+AMOSTRA = (0.08, 0.5, 0.92)   # começo, meio e fim: é onde dá para ver se a cam andou de lugar
+
+
+def amostra_do_vod(dados: Path, nome_canal: str, url: str) -> tuple[Path, str, list[Path]]:
+    """Três frames de uma live ainda não processada: começo, meio e fim.
+
+    Baixa só 4 segundos em cada ponto (o VOD inteiro são dezenas de GB), para dar para enquadrar
+    antes de processar — e para a cam fora do lugar aparecer antes de render nenhum.
+    """
+    from . import enquadrar, vod as mod_vod
+
+    info = mod_vod.informacoes(url)
+    ident, duracao = info["id"], info["duracao"]
+    if not duracao:
+        raise ValueError("não consegui ler a duração desse VOD")
+    pasta = dados / nome_canal / "vods" / "trechos"
+    pasta.mkdir(parents=True, exist_ok=True)
+    quadros = dados / nome_canal / "_frames"
+    quadros.mkdir(parents=True, exist_ok=True)
+
+    frames, primeiro = [], None
+    for i, f in enumerate(AMOSTRA, 1):
+        t = duracao * f
+        trecho = pasta / f"{ident}_amostra{i}.mp4"
+        try:
+            comeco = mod_vod.baixar_trecho(url, t, t + 4, trecho)
+        except (subprocess.CalledProcessError, RuntimeError, OSError) as e:
+            raise RuntimeError(f"não deu para baixar a amostra em {t / 3600:.1f}h: {e}") from e
+        primeiro = primeiro or trecho
+        alvo = quadros / f"frame{i}.png"
+        alvo.unlink(missing_ok=True)
+        if enquadrar.frame(trecho, alvo, comeco + 1, 1.0):
+            frames.append(alvo)
+    if not frames:
+        raise RuntimeError("não consegui tirar nenhum frame desse VOD")
+    return primeiro, ident, frames
+
+
+def abrir_oficina(dados: Path, nome_canal: str, video: Path, porta: int = 8810,
+                  vod: str = "", corte: str = "", frames: list[Path] | None = None) -> str:
+    """Sobe (ou troca o vídeo d)a ferramenta de enquadramento, sem travar o painel.
+
+    Com `corte`, o ajuste fica só naquele corte e salvar já manda recompilá-lo — é o que faz o
+    botão da Revisão valer alguma coisa. Com `vod`, vale para a live inteira dali em diante.
+    """
     from . import enquadrar
 
     if srv := _oficina.get("srv"):
         srv.shutdown()
         srv.server_close()
     cfg = config.carregar()
-    srv = enquadrar.criar(video, nome_canal, config.canal(cfg, nome_canal), dados, porta)
+    canal = config.canal(cfg, nome_canal)
+    destino = enquadrar.arquivo(dados, nome_canal, vod=vod, corte=corte)
+    alvo = "este corte" if corte else (f"a live {vod}" if vod else "o canal")
+
+    def depois(_):
+        if not corte:
+            return None
+        return trabalho.comecar_funcao("recompilando o corte com o enquadramento novo",
+                                       nome_canal, lambda log: str(rerenderizar(dados, corte)["arquivo"]))
+
+    srv = enquadrar.criar(video, nome_canal, canal, dados, porta, destino=destino, alvo=alvo,
+                          ao_salvar=depois, frames=frames)
     _oficina["srv"] = srv
     threading.Thread(target=srv.serve_forever, daemon=True).start()
     return f"http://localhost:{porta}"
 
 
+def _guardar_campo(arq: Path, lista: str, idx: int, campo: str, valor) -> None:
+    with _trava:
+        d = json.loads(arq.read_text(encoding="utf-8"))
+        d[lista][idx][campo] = valor
+        tmp = arq.with_suffix(".tmp")
+        tmp.write_text(json.dumps(d, ensure_ascii=False, indent=2), encoding="utf-8")
+        tmp.replace(arq)
+
+
 def rerenderizar(dados: Path, ident: str) -> dict:
     """Gera de novo o mp4 desse corte com o enquadramento atual, reaproveitando o trecho já baixado."""
-    from . import enquadrar, legendas, render
+    from . import enquadrar, legendas, render, vod
 
     arq, lista, idx = _localizar(dados, ident)
     d = json.loads(arq.read_text(encoding="utf-8"))
@@ -266,15 +330,30 @@ def rerenderizar(dados: Path, ident: str) -> dict:
     if fonte is None:
         raise ValueError("o trecho bruto desse corte não está mais em disco: reprocesse a live")
     cfg = config.carregar()
-    canal = config.canal(cfg, d.get("canal", ident.split("/")[0]))
-    # o trecho de HLS guarda o tempo do VOD: o início dele é o deslocamento do corte
-    comeco = enquadrar.intervalo(fonte)[0]
+    nome_canal = d.get("canal", ident.split("/")[0])
+    # o id do corte traz o arquivo de áudio (v123_audio); o enquadramento é do VOD (v123)
+    canal = enquadrar.aplicar(config.canal(cfg, nome_canal), dados, nome_canal,
+                              vod=ident.split("/")[1].removesuffix("_audio"), corte=ident)
+    # Em que segundo do VOD o trecho começa: guardado no processamento; nos cortes de antes
+    # disso, recalculado pela lista de pedaços do VOD (o "start" do arquivo NÃO serve: é o
+    # relógio do stream, que no bisteconee anda ~61 s à frente, e recortava fora do trecho).
+    comeco = c.get("trecho_inicio")
+    if comeco is None:
+        url = vod.url_do_vod(config.absoluto(d["video"])) if d.get("video") else None
+        if not url:
+            raise ValueError("não sei de qual VOD esse corte veio (falta o .info.json): reprocesse a live")
+        comeco = vod.inicio_do_trecho(url, c["inicio"], c["fim"])
+        _guardar_campo(arq, lista, idx, "trecho_inicio", round(comeco, 3))
     ini, fim = c["inicio"] - comeco, c["fim"] - comeco
+    a, b = enquadrar.intervalo(fonte)
+    if ini < -0.5 or fim > (b - a) + 0.5:
+        raise ValueError(f"o trecho bruto ({b - a:.0f}s) não cobre esse corte ({ini:.1f}–{fim:.1f}s): reprocesse a live")
     ass = None
     if c.get("palavras"):
         ass = legendas.gerar_ass(c["palavras"], c["inicio"], c["fim"], destino.with_suffix(".ass"),
                                  render.posicao_legenda(canal))
-    render.renderizar(fonte, ini, fim, destino, canal, ass)
+    # a conferência de saída vazia agora é do próprio render, que grava num .tmp e só troca no fim
+    render.renderizar(fonte, ini, fim, destino, canal, ass, progresso=trabalho.progresso)
     _fichas.clear()
     rev = c.get("revisao") or {}
     if rev.get("status") == "aprovado":   # o que já foi para prontos tem que acompanhar
@@ -396,6 +475,17 @@ def servir(dados: Path, porta: int = 8800, trabalhador: bool = True) -> None:
             self.end_headers()
             self.wfile.write(corpo)
 
+        def _rota_desconhecida(self):
+            # O caso comum: a página (lida do disco a cada acesso) já é a nova, mas este processo
+            # ainda roda o Python de antes de um `git pull`, e não conhece a rota que ela chama.
+            self._json({"ok": False, "erro": "o painel aberto no terminal está com o código antigo: "
+                        "feche-o (Ctrl+C) e abra de novo com `python -m cortes painel`"}, 404)
+
+        def _falha_interna(self, e: Exception):
+            traceback.print_exc()
+            self._json({"ok": False, "erro": f"erro interno do painel ({type(e).__name__}: {e}); "
+                        "o detalhe está no terminal"}, 500)
+
         def _html(self, texto: str, status=200):
             corpo = texto.encode()
             self.send_response(status)
@@ -506,16 +596,24 @@ def servir(dados: Path, porta: int = 8800, trabalhador: bool = True) -> None:
                         if isinstance(e, fila.ErroConta):
                             contas.atualizar(conta["id"], precisa_reconectar=True)
                         self._json({"ok": False, "erro": str(e)})
+                elif url.path.startswith("/api/"):
+                    self._rota_desconhecida()
                 else:
                     self.send_error(404)
             except (ValueError, KeyError, IndexError, FileNotFoundError, RuntimeError,
                     subprocess.SubprocessError, fila.ErroConta, fila.ErroCota, fila.ErroDefinitivo) as e:
                 if url.path.startswith("/oauth/"):
                     self._mensagem("Não deu certo", html_mod.escape(str(e)), 400)
+                elif url.path.startswith("/api/"):
+                    self._json({"ok": False, "erro": str(e) or "pedido inválido"}, 400)
                 else:
                     self.send_error(404)
             except (ConnectionAbortedError, ConnectionResetError, BrokenPipeError):
                 pass
+            except Exception as e:  # noqa: BLE001 - bug: o terminal mostra o traceback, o painel mostra o motivo
+                if not url.path.startswith("/api/"):
+                    raise
+                self._falha_interna(e)
 
         def do_POST(self):
             # Só aceita JSON vindo do próprio painel: outro site não consegue enviar
@@ -546,18 +644,22 @@ def servir(dados: Path, porta: int = 8800, trabalhador: bool = True) -> None:
                     nome = str(corpo.get("canal") or "")
                     if not SEGURO.match(nome):
                         raise ValueError("canal inválido")
-                    if ident := corpo.get("corte_id"):
-                        video = trecho_bruto(dados, str(ident))
+                    ident, vod, frames = str(corpo.get("corte_id") or ""), "", None
+                    if ident:
+                        video = trecho_bruto(dados, ident)
                         if video is None:
                             raise ValueError("o trecho bruto desse corte não está mais em disco")
+                        vod = ident.split("/")[1].removesuffix("_audio")
+                    elif url_vod := str(corpo.get("url") or ""):
+                        video, vod, frames = amostra_do_vod(dados, nome, url_vod)
                     else:
                         trechos = sorted((dados / nome / "vods" / "trechos").glob("*_bruto.mp4"),
                                          key=lambda p: p.stat().st_mtime, reverse=True)
                         if not trechos:
                             raise ValueError(f"nenhum trecho de {nome} baixado ainda: processe um VOD primeiro")
                         video = trechos[0]
-                    self._json({"ok": True, "url": abrir_oficina(dados, nome, video),
-                                "video": video.name})
+                    self._json({"ok": True, "video": video.name,
+                                "url": abrir_oficina(dados, nome, video, vod=vod, corte=ident, frames=frames)})
                 elif caminho.startswith("/api/legenda/"):
                     self._json(gerar_legenda(dados, caminho[len("/api/legenda/"):]))
                 elif caminho == "/api/canais":
@@ -583,9 +685,13 @@ def servir(dados: Path, porta: int = 8800, trabalhador: bool = True) -> None:
                 elif m := re.fullmatch(r"/api/fila/([\w-]+)/(cancelar|tentar|agora)", caminho):
                     self._json({"ok": True, "item": fila.acao(m.group(1), m.group(2))})
                 else:
-                    self.send_error(404)
+                    self._rota_desconhecida()
             except (ValueError, KeyError, IndexError, FileNotFoundError, StopIteration, RuntimeError) as e:
                 self._json({"ok": False, "erro": str(e) or "pedido inválido"}, 400)
+            except (ConnectionAbortedError, ConnectionResetError, BrokenPipeError):
+                pass
+            except Exception as e:  # noqa: BLE001 - bug: o terminal mostra o traceback, o painel mostra o motivo
+                self._falha_interna(e)
 
         def _video(self, p: Path):
             """Serve o mp4 com suporte a Range (necessário para o player avançar/voltar)."""

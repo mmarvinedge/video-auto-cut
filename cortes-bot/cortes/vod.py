@@ -50,6 +50,12 @@ def _info(url: str, formato: str) -> dict:
     return d
 
 
+def informacoes(url: str, altura_max: int = 1080) -> dict:
+    """{"id", "duracao"} do VOD, da mesma memória que o `baixar_trecho` usa."""
+    d = _info(url, f"b[height<={altura_max}]/b")
+    return {"id": d.get("id") or "", "duracao": float(d.get("duration") or 0.0)}
+
+
 def baixar_audio(url: str, pasta: Path) -> Path:
     """Baixa só o áudio do VOD (~15x menor que 720p) em paralelo. Basta para a detecção."""
     info = _info(url, "Audio_Only/ba/worst")
@@ -64,6 +70,23 @@ def baixar_trecho(url: str, inicio: float, fim: float, destino: Path, altura_max
     Retorna em que segundo do VOD o arquivo baixado começa (para o corte acertar o tempo)."""
     info = _info(url, f"b[height<={altura_max}]/b")
     return hls.baixar(info["url"], destino, inicio, fim, progresso=False, memoria=True)
+
+
+def inicio_do_trecho(url: str, inicio: float, fim: float, altura_max: int = 1080) -> float:
+    """Em que segundo do VOD começa o arquivo que o `baixar_trecho` gravou para [inicio, fim],
+    sem baixar nada de novo: é o início do primeiro pedaço do HLS que cobre o intervalo.
+
+    O próprio arquivo não diz isso: o "start" que o ffmpeg lê é o relógio do stream da Twitch,
+    que anda à frente do tempo do VOD (no bisteconee, ~61 s)."""
+    import httpx
+
+    info = _info(url, f"b[height<={altura_max}]/b")
+    with httpx.Client(timeout=30, follow_redirects=True) as cliente:
+        pedacos = hls.ler_playlist(info["url"], cliente, memoria=True)
+    cobrem = [p for p in pedacos if p.inicio + p.duracao > inicio and p.inicio < fim]
+    if not cobrem:
+        raise ValueError("o VOD não tem pedaços nesse intervalo")
+    return cobrem[0].inicio
 
 
 def inicio_do_vod(video: Path) -> float | None:

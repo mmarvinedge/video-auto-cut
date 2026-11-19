@@ -34,6 +34,10 @@
     <span class="contagem" id="contagem"></span>
   </div>
 </header>
+<div id="falha-painel" class="falha-painel" role="alert" hidden>
+  <span id="falha-painel-texto"></span>
+  <button type="button" aria-label="Fechar aviso" onclick="this.parentElement.hidden = true">×</button>
+</div>
 
 <main>
   <section id="aba-lives" hidden>
@@ -136,6 +140,15 @@
   </form>
 </dialog>
 
+<dialog id="dlg-enq" aria-labelledby="enq-titulo">
+  <div class="dlg enq">
+    <div class="linha"><h2 id="enq-titulo">Enquadramento</h2>
+      <span class="motivo" id="enq-alvo"></span>
+      <button type="button" id="enq-fechar">Fechar</button></div>
+    <iframe id="enq-quadro" title="Oficina de enquadramento"></iframe>
+  </div>
+</dialog>
+
 <script>
 let cortes = [], E = null, filtroStatus = "pendente", dlgCorte = null;
 const FORMATOS = { curto: "Shorts/Reels", tiktok: "TikTok longo", compilacao: "TikTok compilação" };
@@ -152,9 +165,32 @@ const privTxt = i => i.plataforma === "youtube" ? " · " + esc(i.privacidade)
   : i.plataforma === "tiktok" ? " · " + esc(i.privacidade === "rascunho" ? "rascunho no app" : (E.privacidades_tiktok[i.privacidade] || i.privacidade)) : "";
 let filaItens = [];
 
+// Nunca lança: em qualquer falha devolve {ok: false, erro}, e as falhas do próprio painel
+// (fora do ar, código antigo, bug) aparecem também na faixa do topo, para nenhum botão
+// ficar mudo nem travado em "desabilitado".
 async function api(url, corpo) {
-  const r = await fetch(url, corpo === undefined ? {} : { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(corpo) });
-  return r.json();
+  let r;
+  try {
+    r = await fetch(url, corpo === undefined ? {} : { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(corpo) });
+  } catch {
+    return falhaPainel("o painel não respondeu. Veja se ele continua aberto no terminal.");
+  }
+  if (!(r.headers.get("Content-Type") || "").includes("application/json")) {
+    // Resposta em HTML numa rota da API: quem respondeu foi um painel com o código de antes
+    // da última atualização, que não conhece esta rota (a página já é a nova).
+    return falhaPainel(r.status === 404
+      ? "o painel aberto no terminal está com o código antigo: feche-o (Ctrl+C) e abra de novo com `python -m cortes painel`."
+      : `o painel respondeu com erro ${r.status}. O detalhe está no terminal.`);
+  }
+  const j = await r.json();
+  if (r.status === 404 || r.status >= 500) falhaPainel(j.erro || `erro ${r.status}`);
+  return j;
+}
+
+function falhaPainel(msg) {
+  $("#falha-painel-texto").textContent = msg;
+  $("#falha-painel").hidden = false;
+  return { ok: false, erro: msg };
 }
 
 // ---------------------------------------------------------------- abas
@@ -297,24 +333,83 @@ function card(c) {
     </div></article>`;
 }
 
+function recarregarVideo(el, c) {
+  $("video", el).src = `/video/${encodeURI(c.id)}?r=${Date.now()}`;
+  $(".capa-img", el).src = `/capa/${encodeURI(c.id)}?t=${c.capa_t ?? 0}&r=${Date.now()}`;
+}
+
+function barra(el, fracao) {
+  let b = $(".progresso", el);
+  if (!b) {
+    b = document.createElement("progress");
+    b.className = "progresso";
+    b.max = 1;
+    $(".salvo", el).after(b);
+  }
+  if (fracao == null) b.removeAttribute("value"); else b.value = fracao;   // sem valor = indefinida
+}
+
+const tirarBarra = el => $(".progresso", el)?.remove();
+
+/** Acompanha o trabalho até ele acabar e troca o vídeo do card. `esperarComecar` serve para o
+ *  enquadramento, onde quem dispara a recompilação é o Aplicar lá dentro do diálogo. */
+async function acompanhar(el, c, esperarComecar = false) {
+  const recado = $(".salvo", el);
+  barra(el, null);
+  for (let i = 0; i < 400; i++) {                      // ffmpeg em crf 17 leva uns minutos
+    await new Promise(ok => setTimeout(ok, 2000));
+    const t = await api("/api/trabalho");
+    if (esperarComecar) {
+      if (!t.atual || !t.atual.rodando) continue;
+      esperarComecar = false;
+    }
+    if (!t.atual) continue;
+    if (t.atual.rodando) {
+      recado.textContent = t.atual.passo + "…";
+      barra(el, t.atual.progresso ?? null);
+      continue;
+    }
+    tirarBarra(el);
+    if (t.atual.erro) { recado.textContent = t.atual.erro; return; }
+    recado.textContent = "pronto";
+    recarregarVideo(el, c);
+    return;
+  }
+  tirarBarra(el);
+  recado.textContent = "demorou demais; veja o log na aba Lives";
+
+}
+
 async function rerender(el, c) {
   const recado = $(".salvo", el);
   const r = await api("/api/rerender/" + encodeURI(c.id), {});
   if (!r.ok) { recado.textContent = r.erro; return; }
   recado.textContent = "re-renderizando…";
-  for (let i = 0; i < 300; i++) {                      // ffmpeg em crf 17 leva uns minutos
-    await new Promise(ok => setTimeout(ok, 3000));
-    const t = await api("/api/trabalho");
-    if (!t.atual || t.atual.rodando) continue;
-    if (t.atual.erro) { recado.textContent = t.atual.erro; return; }
-    recado.textContent = "pronto";
-    const v = $("video", el);
-    v.src = `/video/${encodeURI(c.id)}?r=${Date.now()}`;
-    $(".capa-img", el).src = `/capa/${encodeURI(c.id)}?t=${c.capa_t ?? 0}&r=${Date.now()}`;
-    return;
-  }
-  recado.textContent = "demorou demais; veja o log na aba Lives";
+  await acompanhar(el, c);
 }
+
+const esperarRecompilar = (el, c) => acompanhar(el, c, true);
+
+/** A oficina é outro servidor (porta 8810), então entra como iframe: a página é a mesma, mas
+ *  sem trocar de aba. Quem clica Aplicar lá dentro dispara a recompilação, e o card acompanha. */
+let OFICINA = "";
+
+function abrirOficina(url, alvo) {
+  OFICINA = new URL(url).origin;
+  $("#enq-alvo").textContent = alvo || "";
+  $("#enq-quadro").src = url + "?t=" + Date.now();
+  $("#dlg-enq").showModal();
+}
+
+$("#enq-fechar").addEventListener("click", () => $("#dlg-enq").close());
+
+// a oficina avisa quando aplicou (ela é outra origem, daí o postMessage); conferir de onde veio
+// importa: sem isso qualquer página aberta poderia fechar o diálogo no meio do ajuste
+addEventListener("message", ev => {
+  if (ev.origin !== OFICINA || ev.data?.de !== "enquadramento" || !ev.data.salvo) return;
+  $("#dlg-enq").close();
+});
+$("#dlg-enq").addEventListener("close", () => { $("#enq-quadro").src = "about:blank"; });
 
 // ------------------------------------------------- prompt para colar noutro chat
 let promptAlvo = null;
@@ -428,15 +523,14 @@ document.addEventListener("click", async e => {
   }
   if (e.target.classList.contains("enquadrar")) {
     const b = e.target, recado = $(".salvo", el);
-    b.disabled = true; recado.textContent = "abrindo…";
+    b.disabled = true; recado.textContent = "extraindo os quadros…";
     const r = await api("/api/enquadrar", { canal: c.canal, corte_id: c.id });
     b.disabled = false;
     if (!r.ok) { recado.textContent = r.erro; return; }
-    recado.textContent = "";
-    window.open(r.url, "enquadramento");
-    if (confirm("Ajuste e salve na aba que abriu.\n\nO enquadramento novo vale para os próximos cortes — este aqui já está renderizado. Re-renderizar este corte agora?")) {
-      rerender(el, c);
-    }
+    abrirOficina(r.url, "corte de " + c.canal);
+    recado.textContent = "ajuste aí e clique em Aplicar: o corte é recompilado sozinho";
+    esperarRecompilar(el, c);
+
   }
   if (e.target.classList.contains("rerender")) rerender(el, c);
   if (e.target.classList.contains("prompt")) {
@@ -754,6 +848,7 @@ async function buscarVods(atualizar) {
         <h3>${esc(v.titulo || "(sem título)")}</h3>
         <a class="motivo" href="${esc(v.url)}" target="_blank" rel="noreferrer">${esc(v.url)}</a>
       </div>
+      <button class="enquadrar-vod" data-url="${esc(v.url)}">Enquadrar</button>
       <button class="primario" data-url="${esc(v.url)}" data-titulo="${esc(v.titulo || "")}">Processar</button>
     </article>`).join("") : `<p class="vazio">Nenhum VOD arquivado nesse canal.</p>`;
 }
@@ -766,8 +861,10 @@ async function verTrabalho() {
   const estado = a.erro ? `<b class="ruim">falhou</b>` : a.rodando
     ? `<b class="andando">${esc(a.passo)}<span class="pontos">…</span></b>` : `<b class="bom">pronto</b>`;
   const min = Math.round(((a.fim || Date.now() / 1000) - a.inicio) / 60);
+  const pct = a.progresso == null ? "" : ` ${Math.round(a.progresso * 100)}%`;
   caixa.innerHTML = `<div class="trabalho ${a.erro ? "erro" : a.rodando ? "rodando" : "feito"}">
-    <div class="linha"><span>${esc(a.titulo || a.url)}</span>${estado}<span class="motivo">${min} min</span></div>
+    <div class="linha"><span>${esc(a.titulo || a.url)}</span>${estado}<span class="motivo">${min} min${pct}</span></div>
+    ${a.rodando ? `<progress class="progresso" max="1"${a.progresso == null ? "" : ` value="${a.progresso}"`}></progress>` : ""}
     ${a.erro ? `<p class="motivo">${esc(a.erro)}</p>` : ""}
     ${!a.rodando && !a.erro ? `<p class="motivo">Os cortes estão na aba <a href="#revisao">Revisão</a>.</p>` : ""}
     <pre class="log">${esc(t.log.slice(-14).join(String.fromCharCode(10)))}</pre>
@@ -799,15 +896,26 @@ $("#lv-form-novo").addEventListener("submit", async e => {
 $("#lv-recarregar").addEventListener("click", () => buscarVods(true));
 $("#lv-enquadrar").addEventListener("click", async e => {
   e.target.disabled = true;
+  $("#lv-recado").textContent = "extraindo os quadros…";
   const r = await api("/api/enquadrar", { canal: $("#lv-canal").value });
   e.target.disabled = false;
   if (!r.ok) { $("#lv-recado").textContent = r.erro; return; }
   $("#lv-recado").textContent = "medindo em " + r.video;
-  window.open(r.url, "enquadramento");
+  abrirOficina(r.url, r.video);
+
 });
 $("#lv-lista").addEventListener("click", async e => {
   const b = e.target.closest("button[data-url]");
   if (!b) return;
+  if (b.classList.contains("enquadrar-vod")) {
+    b.disabled = true;
+    $("#lv-recado").textContent = "baixando 3 trechos da live…";
+    const r = await api("/api/enquadrar", { canal: $("#lv-canal").value, url: b.dataset.url });
+    b.disabled = false;
+    $("#lv-recado").textContent = r.ok ? "" : r.erro;
+    if (r.ok) abrirOficina(r.url, "live inteira · 3 momentos");
+    return;
+  }
   if (!confirm(`Processar "${b.dataset.titulo || b.dataset.url}"?
 
 Baixa o áudio da live inteira e gera os cortes. Pode levar bastante tempo.`)) return;

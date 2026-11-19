@@ -178,6 +178,20 @@ summary { cursor: pointer; color: var(--tinta); font-weight: 500; }
 .aviso { background: var(--pend-f); color: var(--pend); border-radius: var(--r-p); padding: 8px 12px; font-size: 13px; }
 .erro, td .erro { color: var(--ruim); font-size: 12px; }
 
+/* falha do próprio painel (fora do ar, código antigo, bug): fica à vista onde quer que se esteja */
+.falha-painel {
+  position: fixed; left: 50%; bottom: 20px; transform: translateX(-50%); z-index: 20;
+  width: min(640px, calc(100vw - 32px));
+  display: flex; align-items: flex-start; gap: 12px;
+  background: var(--sup); color: var(--ruim); border: 1px solid var(--ruim);
+  border-radius: var(--r-p); padding: 12px 14px; font-size: 14px; line-height: 1.45;
+}
+.falha-painel[hidden] { display: none; }
+.falha-painel span { flex: 1; }
+.falha-painel button {
+  background: none; border: 0; color: inherit; font-size: 20px; line-height: 1; padding: 0 2px; cursor: pointer;
+}
+
 /* ---------------------------------------------------------------- tabela e seções */
 
 .tabela { overflow-x: auto; border-radius: var(--r); border: 1px solid var(--borda); background: var(--sup); }
@@ -262,12 +276,22 @@ dialog::backdrop { background: rgba(0, 0, 0, .6); }
 
 /* ---------------------------------------------------------------- enquadramento */
 
-.oficina { display: flex; gap: 24px; flex-wrap: wrap; padding: 24px; }
+/* o frame encolhe e a prévia fica SEMPRE do lado: enquadrar olhando um embaixo do outro,
+   rolando a página entre os dois, não serve para nada */
+.oficina { display: flex; gap: 24px; padding: 24px; align-items: flex-start; }
+.oficina > .lado:first-child { flex: 1 1 auto; min-width: 0; }
+.oficina > .lado:last-child { flex: 0 0 auto; }
 .lado { display: flex; flex-direction: column; gap: 12px; }
-#palco { border: 1px solid var(--borda); border-radius: var(--r); cursor: crosshair; display: block; }
+#palco { border: 1px solid var(--borda); border-radius: var(--r); cursor: crosshair; display: block;
+         width: 100%; height: auto; max-width: 960px; }
 #previa { border: 1px solid var(--borda); border-radius: var(--r); background: #000; display: block; }
 .legenda { display: flex; gap: 16px; font-size: 12px; align-items: center; color: var(--tinta-3); flex-wrap: wrap; }
 .chip { display: inline-flex; align-items: center; gap: 7px; color: var(--tinta-2); }
+/* os chips da legenda viraram botões: travam qual retângulo o arrasto move */
+button.chip { background: none; border: 1px solid transparent; border-radius: var(--r-p);
+              padding: 3px 9px; cursor: pointer; font: inherit; color: var(--tinta-2); }
+button.chip:hover { border-color: var(--borda-2); background: none; }
+button.chip.on { border-color: var(--tinta-3); background: var(--sup-2); color: var(--tinta); }
 .cor { width: 12px; height: 12px; border-radius: 3px; }
 .frames { display: inline-flex; border: 1px solid var(--borda); border-radius: var(--r-p); overflow: hidden; align-self: flex-start; }
 .frames button { border: 0; border-right: 1px solid var(--borda); border-radius: 0; padding: 6px 12px; font-size: 13px; color: var(--tinta-3); background: var(--sup); }
@@ -277,7 +301,39 @@ dialog::backdrop { background: rgba(0, 0, 0, .6); }
 .medidas td { border: 0; padding: 3px 14px 3px 0; color: var(--tinta-3); font-size: 12px; }
 .medidas td b { color: var(--tinta); font-size: 14px; font-weight: 500; }
 #recado { font-size: 13px; color: var(--ok); min-height: 18px; }
-#aviso:not(:empty) { background: var(--pend-f); color: var(--pend); border-radius: var(--r-p); padding: 7px 11px; font-size: 13px; }
+/* o espaço do aviso fica reservado mesmo vazio: se ele crescesse ao aparecer, empurraria o
+   canvas no meio do arrasto, e o retângulo pularia junto com a página */
+#aviso { min-height: 2.4em; font-size: 13px; border: 1px solid transparent;
+         border-radius: var(--r-p); padding: 7px 11px; }
+#aviso:not(:empty) { background: var(--pend-f); color: var(--pend); border-color: rgba(227, 176, 91, .35); }
+
+/* barra de progresso: cor sólida (sem degradê — o painel não tem brilho) */
+progress.progresso {
+  width: 100%; height: 6px; margin-top: 6px; border: 0; border-radius: 3px;
+  background: var(--sup-2); appearance: none;
+}
+progress.progresso::-webkit-progress-bar { background: var(--sup-2); border-radius: 3px; }
+progress.progresso::-webkit-progress-value { background: var(--info); border-radius: 3px; transition: width .3s; }
+progress.progresso::-moz-progress-bar { background: var(--info); border-radius: 3px; }
+/* sem value o navegador anima sozinho; a listra deixa claro que é "não sei quanto falta" */
+progress.progresso:not([value])::-webkit-progress-bar {
+  background: repeating-linear-gradient(135deg, var(--sup-2) 0 10px, var(--borda) 10px 20px);
+}
+
+/* diálogo do enquadramento (a oficina abre num iframe, sem trocar de aba) */
+#dlg-enq { width: min(96vw, 1180px); max-width: none; }
+#dlg-enq .enq { display: flex; flex-direction: column; gap: 12px; }
+#dlg-enq .linha { display: flex; gap: 12px; align-items: baseline; }
+#dlg-enq .linha h2 { margin: 0; flex: 0 0 auto; }
+#dlg-enq .linha button { margin-left: auto; }
+/* o fim da rolagem dentro do diálogo não pode virar rolagem da página atrás dele: `contain`
+   corta essa emenda (dentro do iframe também, por isso a regra em `html`), e com o
+   diálogo aberto a página de trás fica travada */
+html { overscroll-behavior: contain; }
+body:has(dialog[open]) { overflow: hidden; }
+#dlg-enq .enq { overscroll-behavior: contain; }
+#enq-quadro { width: 100%; height: min(74vh, 820px); border: 1px solid var(--borda);
+              border-radius: var(--r); background: var(--fundo); overscroll-behavior: contain; }
 
 /* ---------------------------------------------------------------- telas estreitas */
 
@@ -286,6 +342,7 @@ dialog::backdrop { background: rgba(0, 0, 0, .6); }
   .lista-cortes { position: static; max-height: 320px; }
 }
 @media (max-width: 720px) {
+  .oficina { flex-wrap: wrap; padding: 16px; }   /* aí não cabe mesmo: a prévia vai para baixo */
   /* celular: o cabeçalho deixa de grudar no topo — preso, ele comia um terço da tela */
   header { position: static; padding: 0 16px; }
   main { padding: 12px 16px 40px; }

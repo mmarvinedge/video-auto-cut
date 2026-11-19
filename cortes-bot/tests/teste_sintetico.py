@@ -111,6 +111,17 @@ def main():
         assert resolucao(saida) == (1080, 1920)
         print(f"ok  corte com legenda -> {saida.relative_to(config.RAIZ)}")
 
+        # re-render com o tempo errado (fora do arquivo): o ffmpeg "termina bem" com um mp4 vazio,
+        # e antes isso substituía o corte bom
+        antes = saida.stat().st_size
+        try:
+            render.renderizar(video, DURACAO + 50, DURACAO + 60, saida, canal)
+            raise AssertionError("render fora do vídeo deveria falhar")
+        except (RuntimeError, subprocess.CalledProcessError):
+            pass
+        assert saida.stat().st_size == antes and not saida.with_name(saida.stem + ".tmp.mp4").exists()
+        print("ok  render fora do vídeo falha sem apagar o corte que já existia")
+
         # IA (sem chamar a API): transcrição enviada e aplicação da avaliação
         txt = ia._frases(palavras, ini, c["fim"])
         assert txt.startswith("[00:02] Caralho, nossa!") and "\n" in txt, txt
