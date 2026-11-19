@@ -66,7 +66,22 @@ Por isso o chat precisa ser gravado **durante** a live com `chat-twitch`.
    - A aba **Fila** mostra cada envio (agendado → enviando → publicado/erro) com o link do vídeo;
      dá para publicar agora, cancelar ou reagendar
    - **O painel precisa estar aberto** (`python -m cortes painel`) no horário agendado: é ele que publica.
-     Se o PC estiver desligado, o que venceu sai assim que o painel abrir de novo
+     Se o PC estiver desligado, o que venceu sai assim que o painel abrir de novo.
+     Para ele abrir sozinho, sem janela, sempre que você entrar no Windows (veja abaixo)
+
+### Painel sempre aberto, sem janela
+
+```
+python iniciar_painel.pyw --instalar     # põe na inicialização do Windows (sem administrador)
+python iniciar_painel.pyw --reiniciar    # depois de um git pull: o painel escondido roda o código antigo
+python iniciar_painel.pyw --parar        # desliga o painel escondido
+python iniciar_painel.pyw --remover      # tira da inicialização
+```
+
+Ele sobe pelo `pythonw`, então nenhuma janela aparece, nem a dos ffmpeg/yt-dlp que ele chama. O que o
+terminal mostraria vai para `dados/painel.log`. Também dá para desligar em *Configurações >
+Aplicativos > Inicialização* ("Painel de cortes"). Se quiser rodar no terminal para ver a saída,
+pare o escondido antes, senão a porta 8800 já está ocupada.
    - Cota do YouTube (ou limite diário do TikTok) esgotada → reagenda sozinho para o dia seguinte;
      acesso expirado → a conta fica marcada para "vincular de novo" na aba Contas
    - Com conta do TikTok marcada, a janela pede o modo (rascunho ou direto; veja abaixo)
