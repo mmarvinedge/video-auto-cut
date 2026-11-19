@@ -140,6 +140,15 @@
   </form>
 </dialog>
 
+<!-- confirmação desenhada pelo próprio painel: o confirm()/alert() do navegador é bloqueado em
+     alguns navegadores embutidos (devolve "Cancelar" na hora, sem mostrar nada) e o botão parecia morto -->
+<dialog id="dlg-pergunta" aria-labelledby="pg-texto">
+  <form method="dialog" class="dlg">
+    <p id="pg-texto" style="margin:0; white-space:pre-line"></p>
+    <menu><button value="nao" id="pg-nao">Cancelar</button><button value="sim" id="pg-sim" class="primario">OK</button></menu>
+  </form>
+</dialog>
+
 <dialog id="dlg-enq" aria-labelledby="enq-titulo">
   <div class="dlg enq">
     <div class="linha"><h2 id="enq-titulo">Enquadramento</h2>
@@ -186,6 +195,18 @@ async function api(url, corpo) {
   if (r.status === 404 || r.status >= 500) falhaPainel(j.erro || `erro ${r.status}`);
   return j;
 }
+
+/** confirm()/alert() do próprio painel. `perguntar` resolve true/false; `avisar` só mostra. */
+function perguntar(msg, soAviso = false) {
+  const d = $("#dlg-pergunta");
+  $("#pg-texto").textContent = msg;
+  $("#pg-nao").hidden = soAviso;
+  d.returnValue = "";
+  d.showModal();
+  $("#pg-sim").focus();
+  return new Promise(ok => d.addEventListener("close", () => ok(d.returnValue === "sim"), { once: true }));
+}
+const avisar = msg => perguntar(msg, true);
 
 function falhaPainel(msg) {
   $("#falha-painel-texto").textContent = msg;
@@ -751,7 +772,7 @@ $("#fila").addEventListener("click", async e => {
   const b = e.target.closest("button[data-acao]"); if (!b) return;
   b.disabled = true;
   const r = await api(`/api/fila/${b.dataset.id}/${b.dataset.acao}`, {});
-  if (!r.ok) alert(r.erro);
+  if (!r.ok) avisar(r.erro);
   desenharFila();
 });
 setInterval(() => { if (abaAtual() === "fila" && !document.hidden) desenharFila(); }, 8000);
@@ -804,7 +825,7 @@ $("#contas").addEventListener("click", async e => {
   }
   if (e.target.matches(".remover")) {
     const el = e.target.closest(".conta");
-    if (!confirm("Remover esta conta? Os itens já agendados nela vão falhar.")) return;
+    if (!await perguntar("Remover esta conta? Os itens já agendados nela vão falhar.")) return;
     await api(`/api/contas/${el.dataset.id}/remover`, {});
     E = await api("/api/estado"); desenharContas();
   }
@@ -916,14 +937,14 @@ $("#lv-lista").addEventListener("click", async e => {
     if (r.ok) abrirOficina(r.url, "live inteira · 3 momentos");
     return;
   }
-  if (!confirm(`Processar "${b.dataset.titulo || b.dataset.url}"?
+  if (!await perguntar(`Processar "${b.dataset.titulo || b.dataset.url}"?
 
 Baixa o áudio da live inteira e gera os cortes. Pode levar bastante tempo.`)) return;
   b.disabled = true;
   const opcoes = [...document.querySelectorAll("#aba-lives .opcoes input:checked")].map(i => i.value);
   const r = await api("/api/processar", { canal: $("#lv-canal").value, url: b.dataset.url, titulo: b.dataset.titulo, opcoes });
   b.disabled = false;
-  if (!r.ok) { alert(r.erro); return; }
+  if (!r.ok) { avisar(r.erro); return; }
   verTrabalho();
 });
 
