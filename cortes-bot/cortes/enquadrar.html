@@ -102,12 +102,21 @@ function desenharPrevia() {
   document.getElementById('salvar').disabled = m.faixa < 0;
 }
 
+/** Quantos pixels do frame cabem em um pixel da tela. O canvas desenha sempre em 960x540,
+ *  mas o CSS pode mostrá-lo menor (dentro do diálogo); sem isso o arrasto sai torto. */
+const fator = () => LARG / palco.getBoundingClientRect().width;
+
+function pontoDoMouse(ev) {
+  const r = palco.getBoundingClientRect();
+  return [(ev.clientX - r.left) * (LARG / r.width), (ev.clientY - r.top) * (ALT / r.height)];
+}
+
 function alvo(mx, my) {
   for (const nome of ['cam', 'conteudo']) {           // cam primeiro: costuma ser menor
     const c = caixas[nome];
     const cs = cantos(c);
     for (let i = 0; i < 4; i++) {
-      if (Math.hypot(mx - cs[i][0], my - cs[i][1]) < 14 / ESC) return { nome, canto: i };
+      if (Math.hypot(mx - cs[i][0], my - cs[i][1]) < 14 * fator()) return { nome, canto: i };
     }
   }
   for (const nome of ['cam', 'conteudo']) {
@@ -118,16 +127,14 @@ function alvo(mx, my) {
 }
 
 palco.addEventListener('mousedown', ev => {
-  const r = palco.getBoundingClientRect();
-  const mx = (ev.clientX - r.left) / ESC, my = (ev.clientY - r.top) / ESC;
+  const [mx, my] = pontoDoMouse(ev);
   const a = alvo(mx, my);
   if (a) arrasto = { ...a, mx, my, inicial: { ...caixas[a.nome] } };
 });
 
 addEventListener('mousemove', ev => {
   if (!arrasto) return;
-  const r = palco.getBoundingClientRect();
-  const mx = (ev.clientX - r.left) / ESC, my = (ev.clientY - r.top) / ESC;
+  const [mx, my] = pontoDoMouse(ev);
   const dx = mx - arrasto.mx, dy = my - arrasto.my, i = arrasto.inicial;
   const c = caixas[arrasto.nome];
   if (arrasto.canto < 0) {

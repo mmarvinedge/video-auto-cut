@@ -298,8 +298,17 @@ dialog::backdrop { background: rgba(10, 5, 22, .72); backdrop-filter: blur(3px);
 
 /* ---------------------------------------------------------------- enquadramento */
 
-.oficina { display: flex; gap: 24px; flex-wrap: wrap; padding: 20px; }
+/* o frame encolhe e a prévia fica SEMPRE do lado: enquadrar olhando um embaixo do outro,
+   rolando a página entre os dois, não serve para nada */
+.oficina { display: flex; gap: 24px; padding: 20px; align-items: flex-start; }
+.oficina > .lado:first-child { flex: 1 1 auto; min-width: 0; }
+.oficina > .lado:last-child { flex: 0 0 auto; }
+#palco { width: 100%; height: auto; max-width: 960px; }
 .lado { display: flex; flex-direction: column; gap: 12px; }
+
+@media (max-width: 720px) {   /* aí não cabe mesmo: a prévia vai para baixo */
+  .oficina { flex-wrap: wrap; }
+}
 .rotulo { font-size: 11px; letter-spacing: .1em; text-transform: uppercase; color: var(--tinta-3); font-weight: 700; }
 #palco { border: 1px solid var(--borda-viva); border-radius: var(--r); cursor: crosshair;
          box-shadow: var(--sombra); display: block; }
