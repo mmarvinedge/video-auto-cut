@@ -178,6 +178,7 @@ def renderizar_trecho(c: dict, destino: Path, ctx: Contexto) -> Path | None:
             raise SystemExit("Áudio sem .info.json: não sei de qual VOD baixar o trecho.")
         fonte = ctx.pasta / "vods" / "trechos" / f"{destino.stem}_bruto.mp4"
         comeco = vod.baixar_trecho(ctx.url, c["inicio"], c["fim"], fonte)
+        c["trecho_inicio"] = round(comeco, 3)   # o re-render do painel precisa disso para recortar
         ini, fim = c["inicio"] - comeco, c["fim"] - comeco
     else:
         fonte, ini, fim = ctx.video, c["inicio"], c["fim"]

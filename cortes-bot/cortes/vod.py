@@ -72,6 +72,23 @@ def baixar_trecho(url: str, inicio: float, fim: float, destino: Path, altura_max
     return hls.baixar(info["url"], destino, inicio, fim, progresso=False, memoria=True)
 
 
+def inicio_do_trecho(url: str, inicio: float, fim: float, altura_max: int = 1080) -> float:
+    """Em que segundo do VOD começa o arquivo que o `baixar_trecho` gravou para [inicio, fim],
+    sem baixar nada de novo: é o início do primeiro pedaço do HLS que cobre o intervalo.
+
+    O próprio arquivo não diz isso: o "start" que o ffmpeg lê é o relógio do stream da Twitch,
+    que anda à frente do tempo do VOD (no bisteconee, ~61 s)."""
+    import httpx
+
+    info = _info(url, f"b[height<={altura_max}]/b")
+    with httpx.Client(timeout=30, follow_redirects=True) as cliente:
+        pedacos = hls.ler_playlist(info["url"], cliente, memoria=True)
+    cobrem = [p for p in pedacos if p.inicio + p.duracao > inicio and p.inicio < fim]
+    if not cobrem:
+        raise ValueError("o VOD não tem pedaços nesse intervalo")
+    return cobrem[0].inicio
+
+
 def inicio_do_vod(video: Path) -> float | None:
     """Epoch (UTC) do início da live, lido do .info.json do yt-dlp."""
     info = video.with_suffix(".info.json")

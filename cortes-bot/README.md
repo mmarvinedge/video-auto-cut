@@ -141,6 +141,24 @@ O acesso vale 180 dias e é renovado sozinho; se vencer ou for revogado, a conta
   `nota_minima`, `atraso_chat` e os pesos.
 - **Permissão** dos streamers para cortar e monetizar.
 
+### Vídeo de demonstração para a revisão do app no TikTok
+
+Para enviar o app para revisão, o TikTok pede um vídeo do fluxo completo e um texto explicando
+cada escopo. O vídeo sai de um roteiro que usa o painel de verdade e adiciona legendas em inglês.
+O texto (até 1000 caracteres) está pronto em `demo/texto_revisao_tiktok.txt`.
+
+```
+pip install playwright
+python -m playwright install chromium
+python -m cortes painel                  # em outro terminal, na porta 8800
+python demo/gravar_demo_tiktok.py
+```
+
+Use as chaves do Sandbox e uma conta "target user" deixada **privada**. O roteiro clica sozinho;
+você só faz o login no TikTok e clica em *Authorize*. Ele **publica de verdade**: 1 vídeo como
+"Só eu" e 1 rascunho. O vídeo fica em `dados/_demo/` (mp4, abaixo de 50 MB). Se a conta já
+estiver vinculada e você não quiser mostrar o login, use `--sem-vinculo`.
+
 ## Teste
 
 `python tests/teste_sintetico.py` gera uma live falsa de 10 minutos, com momentos conhecidos, e valida a detecção e os cortes 1080x1920.

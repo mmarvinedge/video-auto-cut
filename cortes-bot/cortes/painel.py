@@ -16,6 +16,7 @@ import re
 import shutil
 import subprocess
 import threading
+import traceback
 import unicodedata
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -298,9 +299,18 @@ def abrir_oficina(dados: Path, nome_canal: str, video: Path, porta: int = 8810,
     return f"http://localhost:{porta}"
 
 
+def _guardar_campo(arq: Path, lista: str, idx: int, campo: str, valor) -> None:
+    with _trava:
+        d = json.loads(arq.read_text(encoding="utf-8"))
+        d[lista][idx][campo] = valor
+        tmp = arq.with_suffix(".tmp")
+        tmp.write_text(json.dumps(d, ensure_ascii=False, indent=2), encoding="utf-8")
+        tmp.replace(arq)
+
+
 def rerenderizar(dados: Path, ident: str) -> dict:
     """Gera de novo o mp4 desse corte com o enquadramento atual, reaproveitando o trecho já baixado."""
-    from . import enquadrar, legendas, render
+    from . import enquadrar, legendas, render, vod
 
     arq, lista, idx = _localizar(dados, ident)
     d = json.loads(arq.read_text(encoding="utf-8"))
@@ -318,26 +328,26 @@ def rerenderizar(dados: Path, ident: str) -> dict:
     # o id do corte traz o arquivo de áudio (v123_audio); o enquadramento é do VOD (v123)
     canal = enquadrar.aplicar(config.canal(cfg, nome_canal), dados, nome_canal,
                               vod=ident.split("/")[1].removesuffix("_audio"), corte=ident)
-    # o trecho de HLS costuma guardar o tempo do VOD (começa em 17679s, por exemplo), e aí o
-    # início do corte é o deslocamento dentro dele. Mas nem todo trecho vem assim: alguns começam
-    # em zero. Pedir 17679s de um arquivo de 56s faz o ffmpeg devolver um mp4 vazio e sair com
-    # sucesso — silêncio que já custou um corte quebrado. Quando a conta não cabe no arquivo,
-    # o trecho é o próprio corte.
-    comeco, final = enquadrar.intervalo(fonte)
-    duracao = final - comeco
+    # Em que segundo do VOD o trecho começa: guardado no processamento; nos cortes de antes
+    # disso, recalculado pela lista de pedaços do VOD (o "start" do arquivo NÃO serve: é o
+    # relógio do stream, que no bisteconee anda ~61 s à frente, e recortava fora do trecho).
+    comeco = c.get("trecho_inicio")
+    if comeco is None:
+        url = vod.url_do_vod(config.absoluto(d["video"])) if d.get("video") else None
+        if not url:
+            raise ValueError("não sei de qual VOD esse corte veio (falta o .info.json): reprocesse a live")
+        comeco = vod.inicio_do_trecho(url, c["inicio"], c["fim"])
+        _guardar_campo(arq, lista, idx, "trecho_inicio", round(comeco, 3))
     ini, fim = c["inicio"] - comeco, c["fim"] - comeco
-    if not (-0.5 <= ini < fim <= duracao + 1):
-        ini, fim = 0.0, min(duracao, c["fim"] - c["inicio"])
+    a, b = enquadrar.intervalo(fonte)
+    if ini < -0.5 or fim > (b - a) + 0.5:
+        raise ValueError(f"o trecho bruto ({b - a:.0f}s) não cobre esse corte ({ini:.1f}–{fim:.1f}s): reprocesse a live")
     ass = None
     if c.get("palavras"):
         ass = legendas.gerar_ass(c["palavras"], c["inicio"], c["fim"], destino.with_suffix(".ass"),
                                  render.posicao_legenda(canal))
+    # a conferência de saída vazia agora é do próprio render, que grava num .tmp e só troca no fim
     render.renderizar(fonte, ini, fim, destino, canal, ass, progresso=trabalho.progresso)
-    # o ffmpeg sai com sucesso mesmo quando não escreveu quadro nenhum; sem esta conferência
-    # o painel diz "pronto" e troca um corte bom por um arquivo vazio
-    if destino.stat().st_size < 100_000:
-        raise RuntimeError(f"a recompilação saiu vazia ({destino.stat().st_size} bytes): "
-                           f"o trecho bruto não cobre {ini:.0f}s–{fim:.0f}s")
     _fichas.clear()
     rev = c.get("revisao") or {}
     if rev.get("status") == "aprovado":   # o que já foi para prontos tem que acompanhar
@@ -459,6 +469,17 @@ def servir(dados: Path, porta: int = 8800, trabalhador: bool = True) -> None:
             self.end_headers()
             self.wfile.write(corpo)
 
+        def _rota_desconhecida(self):
+            # O caso comum: a página (lida do disco a cada acesso) já é a nova, mas este processo
+            # ainda roda o Python de antes de um `git pull`, e não conhece a rota que ela chama.
+            self._json({"ok": False, "erro": "o painel aberto no terminal está com o código antigo: "
+                        "feche-o (Ctrl+C) e abra de novo com `python -m cortes painel`"}, 404)
+
+        def _falha_interna(self, e: Exception):
+            traceback.print_exc()
+            self._json({"ok": False, "erro": f"erro interno do painel ({type(e).__name__}: {e}); "
+                        "o detalhe está no terminal"}, 500)
+
         def _html(self, texto: str, status=200):
             corpo = texto.encode()
             self.send_response(status)
@@ -569,16 +590,24 @@ def servir(dados: Path, porta: int = 8800, trabalhador: bool = True) -> None:
                         if isinstance(e, fila.ErroConta):
                             contas.atualizar(conta["id"], precisa_reconectar=True)
                         self._json({"ok": False, "erro": str(e)})
+                elif url.path.startswith("/api/"):
+                    self._rota_desconhecida()
                 else:
                     self.send_error(404)
             except (ValueError, KeyError, IndexError, FileNotFoundError, RuntimeError,
                     subprocess.SubprocessError, fila.ErroConta, fila.ErroCota, fila.ErroDefinitivo) as e:
                 if url.path.startswith("/oauth/"):
                     self._mensagem("Não deu certo", html_mod.escape(str(e)), 400)
+                elif url.path.startswith("/api/"):
+                    self._json({"ok": False, "erro": str(e) or "pedido inválido"}, 400)
                 else:
                     self.send_error(404)
             except (ConnectionAbortedError, ConnectionResetError, BrokenPipeError):
                 pass
+            except Exception as e:  # noqa: BLE001 - bug: o terminal mostra o traceback, o painel mostra o motivo
+                if not url.path.startswith("/api/"):
+                    raise
+                self._falha_interna(e)
 
         def do_POST(self):
             # Só aceita JSON vindo do próprio painel: outro site não consegue enviar
@@ -650,9 +679,13 @@ def servir(dados: Path, porta: int = 8800, trabalhador: bool = True) -> None:
                 elif m := re.fullmatch(r"/api/fila/([\w-]+)/(cancelar|tentar|agora)", caminho):
                     self._json({"ok": True, "item": fila.acao(m.group(1), m.group(2))})
                 else:
-                    self.send_error(404)
+                    self._rota_desconhecida()
             except (ValueError, KeyError, IndexError, FileNotFoundError, StopIteration, RuntimeError) as e:
                 self._json({"ok": False, "erro": str(e) or "pedido inválido"}, 400)
+            except (ConnectionAbortedError, ConnectionResetError, BrokenPipeError):
+                pass
+            except Exception as e:  # noqa: BLE001 - bug: o terminal mostra o traceback, o painel mostra o motivo
+                self._falha_interna(e)
 
         def _video(self, p: Path):
             """Serve o mp4 com suporte a Range (necessário para o player avançar/voltar)."""

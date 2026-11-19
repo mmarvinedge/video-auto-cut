@@ -21,6 +21,7 @@ def _texto_ffmpeg(s: str) -> str:
 
 FAIXA = 220          # altura da faixa preta entre a cam e o jogo: e nela que a legenda fica
 FONTE_W, FONTE_H = 1920, 1080   # resolucao do VOD de origem
+MINIMO_BYTES = 50_000  # um corte de verdade tem megabytes; abaixo disso o ffmpeg nao achou quadro
 
 
 def _layout(facecam: dict, conteudo: dict | None = None) -> dict:
@@ -167,10 +168,20 @@ def renderizar(video: Path, inicio: float, fim: float, saida: Path, canal: dict,
         "-c:v", "libx264", "-preset", "slow", "-crf", "17", "-r", "30",
         "-c:a", "aac", "-b:a", "192k", "-ar", "48000",
         "-movflags", "+faststart",
-        str(saida),
+        str(tmp := saida.with_name(saida.stem + ".tmp" + saida.suffix)),
     ]
-    if progresso:
-        _com_progresso(cmd, pasta, fim - inicio, progresso)
-    else:
-        subprocess.run(cmd, check=True, cwd=pasta)
+    # Grava ao lado e só troca no fim: um re-render que dê errado não pode apagar o corte bom.
+    # Um intervalo fora do arquivo de origem não é erro para o ffmpeg: ele sai com sucesso e
+    # escreve um mp4 sem quadro nenhum (algumas centenas de bytes).
+    try:
+        if progresso:
+            _com_progresso(cmd, pasta, fim - inicio, progresso)
+        else:
+            subprocess.run(cmd, check=True, cwd=pasta)
+        if tmp.stat().st_size < MINIMO_BYTES:
+            raise RuntimeError(f"o render saiu vazio ({tmp.stat().st_size} bytes): o trecho "
+                               f"{inicio:.1f}–{fim:.1f}s não está dentro de {Path(video).name}")
+        tmp.replace(saida)
+    finally:
+        tmp.unlink(missing_ok=True)
     return saida
