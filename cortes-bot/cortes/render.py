@@ -128,8 +128,31 @@ def concatenar(partes: list[Path], saida: Path) -> Path:
     return saida
 
 
-def renderizar(video: Path, inicio: float, fim: float, saida: Path, canal: dict, legenda: Path | None = None) -> Path:
-    """`legenda`: arquivo .ass opcional (tempos relativos ao início do corte)."""
+def _com_progresso(cmd: list[str], pasta: Path | None, duracao: float, progresso) -> None:
+    """Roda o ffmpeg contando quanto já saiu, para a barra do painel andar de verdade.
+
+    O `-progress pipe:1` imprime `out_time_us=` a cada quadro; é a única medida honesta que o
+    ffmpeg dá, já que ele não sabe estimar o tempo que falta.
+    """
+    cmd = [cmd[0], "-progress", "pipe:1", "-nostats", *cmd[1:]]
+    p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                         text=True, encoding="utf-8", errors="replace", cwd=pasta)
+    for linha in p.stdout:
+        if linha.startswith("out_time_us=") and duracao > 0:
+            try:
+                progresso(min(1.0, int(linha[12:].strip()) / 1e6 / duracao))
+            except ValueError:
+                pass
+    p.wait()
+    if p.returncode:
+        raise subprocess.CalledProcessError(p.returncode, cmd, stderr=p.stderr.read()[-600:])
+
+
+def renderizar(video: Path, inicio: float, fim: float, saida: Path, canal: dict,
+               legenda: Path | None = None, progresso=None) -> Path:
+    """`legenda`: arquivo .ass opcional (tempos relativos ao início do corte).
+
+    `progresso`: recebe de 0 a 1 enquanto o ffmpeg escreve, para quem mostra barra."""
     saida = saida.resolve()
     saida.parent.mkdir(parents=True, exist_ok=True)
     # o ffmpeg roda dentro da pasta da legenda: assim o filtro recebe só o nome do arquivo,
@@ -146,5 +169,8 @@ def renderizar(video: Path, inicio: float, fim: float, saida: Path, canal: dict,
         "-movflags", "+faststart",
         str(saida),
     ]
-    subprocess.run(cmd, check=True, cwd=pasta)
+    if progresso:
+        _com_progresso(cmd, pasta, fim - inicio, progresso)
+    else:
+        subprocess.run(cmd, check=True, cwd=pasta)
     return saida

@@ -354,6 +354,28 @@ dialog::backdrop { background: rgba(10, 5, 22, .72); backdrop-filter: blur(3px);
 .opcoes { display: flex; gap: 8px 18px; flex-wrap: wrap; font-size: 13px; color: var(--tinta-2); }
 .opcoes label { display: flex; gap: 6px; align-items: center; }
 
+progress.barra {
+  width: 100%; height: 6px; margin-top: 6px; border: 0; border-radius: 3px;
+  background: var(--noite-3); appearance: none;
+}
+progress.barra::-webkit-progress-bar { background: var(--noite-3); border-radius: 3px; }
+progress.barra::-webkit-progress-value {
+  background: linear-gradient(90deg, var(--rosa), var(--ciano)); border-radius: 3px;
+  transition: width .3s;
+}
+/* sem value o navegador anima sozinho; a listra deixa claro que é "não sei quanto falta" */
+progress.barra:not([value])::-webkit-progress-bar {
+  background: repeating-linear-gradient(135deg, var(--noite-3) 0 10px, var(--borda) 10px 20px);
+}
+
+#dlg-enq { width: min(96vw, 1180px); max-width: none; }
+#dlg-enq .enq { gap: 12px; }
+#dlg-enq .linha { display: flex; gap: 12px; align-items: baseline; }
+#dlg-enq .linha h2 { margin: 0; flex: 0 0 auto; }
+#dlg-enq .enq { display: flex; flex-direction: column; }
+#dlg-enq .linha button { margin-left: auto; }
+#enq-quadro { width: 100%; height: min(74vh, 820px); border: 1px solid var(--borda); border-radius: var(--r); background: var(--noite-1); }
+
 .novo-canal {
   display: flex; flex-direction: column; gap: 12px; max-width: 560px;
   background: var(--noite-2); border: 1px solid var(--borda); border-radius: var(--r); padding: 16px 18px;

@@ -52,7 +52,15 @@ def _passo(nome: str) -> None:
     with _trava:
         if _atual is not None:
             _atual["passo"] = nome
+            _atual["progresso"] = None
     _escrever(f"=== {nome} ===")
+
+
+def progresso(fracao: float | None) -> None:
+    """Quanto do passo atual já saiu, de 0 a 1 (None = não dá para medir)."""
+    with _trava:
+        if _atual is not None:
+            _atual["progresso"] = None if fracao is None else round(max(0.0, min(1.0, fracao)), 3)
 
 
 def _rodar(argumentos: list[str]) -> list[str]:
@@ -67,6 +75,10 @@ def _rodar(argumentos: list[str]) -> list[str]:
         if linha:
             saida.append(linha)
             _escrever(linha)
+            # as etapas longas contam em voz alta ("1500/3135 pedaços", "corte 3/10"): vira barra
+            if m := re.search(r"\b(\d+)\s*/\s*(\d+)\b", linha):
+                feito, total = int(m.group(1)), int(m.group(2))
+                progresso(feito / total if 0 < feito <= total else None)
     if p.wait() != 0:
         raise RuntimeError(f"`cortes {argumentos[0]}` falhou (código {p.returncode}). Veja o log.")
     return saida
@@ -123,7 +135,8 @@ def comecar(nome_canal: str, url: str, titulo: str = "", opcoes: list[str] | Non
             raise RuntimeError(f"já estou processando {_atual['titulo'] or _atual['url']}. Espere terminar.")
         _log.clear()
         _atual = {"canal": nome_canal, "url": url, "titulo": titulo[:160], "opcoes": opcoes,
-                  "passo": "começando", "rodando": True, "inicio": time.time(), "fim": None, "erro": None}
+                  "passo": "começando", "rodando": True, "inicio": time.time(), "fim": None,
+                  "erro": None, "progresso": None}
         atual = dict(_atual)
     threading.Thread(target=_trabalhar, args=(nome_canal, url, titulo, opcoes), daemon=True).start()
     return atual
@@ -138,7 +151,8 @@ def comecar_funcao(titulo: str, nome_canal: str, fn) -> dict:
             raise RuntimeError("já tem um trabalho rodando. Espere terminar.")
         _log.clear()
         _atual = {"canal": nome_canal, "url": "", "titulo": titulo[:160], "opcoes": [],
-                  "passo": "começando", "rodando": True, "inicio": time.time(), "fim": None, "erro": None}
+                  "passo": "começando", "rodando": True, "inicio": time.time(), "fim": None,
+                  "erro": None, "progresso": None}
         atual = dict(_atual)
 
     def alvo():

@@ -136,6 +136,15 @@
   </form>
 </dialog>
 
+<dialog id="dlg-enq" aria-labelledby="enq-titulo">
+  <div class="dlg enq">
+    <div class="linha"><h2 id="enq-titulo">Enquadramento</h2>
+      <span class="motivo" id="enq-alvo"></span>
+      <button type="button" id="enq-fechar">Fechar</button></div>
+    <iframe id="enq-quadro" title="Oficina de enquadramento"></iframe>
+  </div>
+</dialog>
+
 <script>
 let cortes = [], E = null, filtroStatus = "pendente", dlgCorte = null;
 const FORMATOS = { curto: "Shorts/Reels", tiktok: "TikTok longo", compilacao: "TikTok compilação" };
@@ -253,22 +262,42 @@ function recarregarVideo(el, c) {
 
 /** Acompanha o trabalho até ele acabar e troca o vídeo do card. `esperarComecar` serve para o
  *  enquadramento, onde quem dispara a recompilação é o Aplicar da oficina, noutra aba. */
+function barra(el, fracao) {
+  let b = $(".barra", el);
+  if (!b) {
+    b = document.createElement("progress");
+    b.className = "barra";
+    b.max = 1;
+    $(".salvo", el).after(b);
+  }
+  if (fracao == null) b.removeAttribute("value"); else b.value = fracao;   // sem valor = indefinida
+}
+
+const tirarBarra = el => $(".barra", el)?.remove();
+
 async function acompanhar(el, c, esperarComecar = false) {
   const recado = $(".salvo", el);
+  barra(el, null);
   for (let i = 0; i < 400; i++) {                      // ffmpeg em crf 17 leva uns minutos
-    await new Promise(ok => setTimeout(ok, 3000));
+    await new Promise(ok => setTimeout(ok, 2000));
     const t = await api("/api/trabalho");
     if (esperarComecar) {
       if (!t.atual || !t.atual.rodando) continue;
       esperarComecar = false;
     }
     if (!t.atual) continue;
-    if (t.atual.rodando) { recado.textContent = t.atual.passo + "…"; continue; }
+    if (t.atual.rodando) {
+      recado.textContent = t.atual.passo + "…";
+      barra(el, t.atual.progresso ?? null);
+      continue;
+    }
+    tirarBarra(el);
     if (t.atual.erro) { recado.textContent = t.atual.erro; return; }
     recado.textContent = "pronto";
     recarregarVideo(el, c);
     return;
   }
+  tirarBarra(el);
   recado.textContent = "demorou demais; veja o log na aba Lives";
 }
 
@@ -281,6 +310,17 @@ async function rerender(el, c) {
 }
 
 const esperarRecompilar = (el, c) => acompanhar(el, c, true);
+
+/** A oficina é outro servidor (porta 8810), então entra como iframe: a página é a mesma, mas
+ *  sem trocar de aba. Quem clica Aplicar lá dentro dispara a recompilação, e o card acompanha. */
+function abrirOficina(url, alvo) {
+  $("#enq-alvo").textContent = alvo || "";
+  $("#enq-quadro").src = url + "?t=" + Date.now();
+  $("#dlg-enq").showModal();
+}
+
+$("#enq-fechar").addEventListener("click", () => $("#dlg-enq").close());
+$("#dlg-enq").addEventListener("close", () => { $("#enq-quadro").src = "about:blank"; });
 
 // ------------------------------------------------- prompt para colar noutro chat
 let promptAlvo = null;
@@ -392,8 +432,8 @@ document.addEventListener("click", async e => {
     const r = await api("/api/enquadrar", { canal: c.canal, corte_id: c.id });
     b.disabled = false;
     if (!r.ok) { recado.textContent = r.erro; return; }
-    window.open(r.url, "enquadramento");
-    recado.textContent = "ajuste na outra aba; ao aplicar, este corte é recompilado";
+    abrirOficina(r.url, "corte de " + c.canal);
+    recado.textContent = "ajuste aí e clique em Aplicar: o corte é recompilado sozinho";
     esperarRecompilar(el, c);
   }
   if (e.target.classList.contains("rerender")) rerender(el, c);
@@ -723,8 +763,10 @@ async function verTrabalho() {
   const estado = a.erro ? `<b class="ruim">falhou</b>` : a.rodando
     ? `<b class="andando">${esc(a.passo)}<span class="pontos">…</span></b>` : `<b class="bom">pronto</b>`;
   const min = Math.round(((a.fim || Date.now() / 1000) - a.inicio) / 60);
+  const pct = a.progresso == null ? "" : ` ${Math.round(a.progresso * 100)}%`;
   caixa.innerHTML = `<div class="trabalho ${a.erro ? "erro" : a.rodando ? "rodando" : "feito"}">
-    <div class="linha"><span>${esc(a.titulo || a.url)}</span>${estado}<span class="motivo">${min} min</span></div>
+    <div class="linha"><span>${esc(a.titulo || a.url)}</span>${estado}<span class="motivo">${min} min${pct}</span></div>
+    ${a.rodando ? `<progress class="barra" max="1"${a.progresso == null ? "" : ` value="${a.progresso}"`}></progress>` : ""}
     ${a.erro ? `<p class="motivo">${esc(a.erro)}</p>` : ""}
     ${!a.rodando && !a.erro ? `<p class="motivo">Os cortes estão na aba <a href="#revisao">Revisão</a>.</p>` : ""}
     <pre class="log">${esc(t.log.slice(-14).join(String.fromCharCode(10)))}</pre>
@@ -760,7 +802,7 @@ $("#lv-enquadrar").addEventListener("click", async e => {
   e.target.disabled = false;
   if (!r.ok) { $("#lv-recado").textContent = r.erro; return; }
   $("#lv-recado").textContent = "medindo em " + r.video;
-  window.open(r.url, "enquadramento");
+  abrirOficina(r.url, r.video);
 });
 $("#lv-lista").addEventListener("click", async e => {
   const b = e.target.closest("button[data-url]");
@@ -770,8 +812,8 @@ $("#lv-lista").addEventListener("click", async e => {
     $("#lv-recado").textContent = "baixando 3 trechos da live…";
     const r = await api("/api/enquadrar", { canal: $("#lv-canal").value, url: b.dataset.url });
     b.disabled = false;
-    $("#lv-recado").textContent = r.ok ? "enquadre na aba que abriu" : r.erro;
-    if (r.ok) window.open(r.url, "enquadramento");
+    $("#lv-recado").textContent = r.ok ? "" : r.erro;
+    if (r.ok) abrirOficina(r.url, "live inteira · 3 momentos");
     return;
   }
   if (!confirm(`Processar "${b.dataset.titulo || b.dataset.url}"?

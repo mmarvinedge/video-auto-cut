@@ -332,7 +332,7 @@ def rerenderizar(dados: Path, ident: str) -> dict:
     if c.get("palavras"):
         ass = legendas.gerar_ass(c["palavras"], c["inicio"], c["fim"], destino.with_suffix(".ass"),
                                  render.posicao_legenda(canal))
-    render.renderizar(fonte, ini, fim, destino, canal, ass)
+    render.renderizar(fonte, ini, fim, destino, canal, ass, progresso=trabalho.progresso)
     # o ffmpeg sai com sucesso mesmo quando não escreveu quadro nenhum; sem esta conferência
     # o painel diz "pronto" e troca um corte bom por um arquivo vazio
     if destino.stat().st_size < 100_000:
