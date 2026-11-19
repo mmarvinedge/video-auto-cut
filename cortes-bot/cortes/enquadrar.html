@@ -12,9 +12,9 @@
   <div class="rotulo" id="arquivo"></div>
   <canvas id="palco" width="960" height="540"></canvas>
   <div class="legenda">
-    <span class="chip"><i class="cor" style="background:#22e3ff"></i> câmera</span>
-    <span class="chip"><i class="cor" style="background:#ff2d95"></i> conteúdo</span>
-    <span style="color:#888">arraste o meio para mover, os cantos para redimensionar</span>
+    <button type="button" class="chip" data-caixa="cam"><i class="cor" style="background:#22e3ff"></i> câmera</button>
+    <button type="button" class="chip" data-caixa="conteudo"><i class="cor" style="background:#ff2d95"></i> conteúdo</button>
+    <span style="color:#888">arraste o meio para mover, os cantos para redimensionar<span id="dica-sobreposto"></span></span>
   </div>
   <div class="frames" id="frames"></div>
 </div>
@@ -95,6 +95,9 @@ function desenharPrevia() {
                   caixas.cam.x + caixas.cam.w <= caixas.conteudo.x ||
                   caixas.conteudo.y + caixas.conteudo.h <= caixas.cam.y ||
                   caixas.cam.y + caixas.cam.h <= caixas.conteudo.y);
+  document.getElementById('dica-sobreposto').textContent = cruza && !travado
+    ? ' — eles estão sobrepostos: clique em “câmera” ou “conteúdo” acima para mexer só num deles'
+    : travado ? ` — mexendo só ${travado === 'cam' ? 'na câmera' : 'no conteúdo'}` : '';
   aviso.textContent = m.faixa < 0
     ? 'Não cabe em 1920: diminua a altura da câmera ou alargue o conteúdo.'
     : m.faixa < 60 ? 'Faixa estreita demais para a legenda.'
@@ -106,35 +109,54 @@ function desenharPrevia() {
  *  mas o CSS pode mostrá-lo menor (dentro do diálogo); sem isso o arrasto sai torto. */
 const fator = () => LARG / palco.getBoundingClientRect().width;
 
-function pontoDoMouse(ev) {
-  const r = palco.getBoundingClientRect();
+function pontoDoMouse(ev, r) {
+  r = r || palco.getBoundingClientRect();
   return [(ev.clientX - r.left) * (LARG / r.width), (ev.clientY - r.top) * (ALT / r.height)];
 }
 
+/** Qual retângulo o clique quer. Onde os dois se cruzam não há resposta certa — clicar no meio
+ *  do conteúdo pegava a câmera, e a pessoa via o retângulo errado se mexer. Por isso dá para
+ *  travar um deles nos botões da legenda; sem trava, vale a ordem de sempre (cam primeiro,
+ *  que costuma ser o menor e ficaria inalcançável por baixo do outro). */
+let travado = null;
+
 function alvo(mx, my) {
-  for (const nome of ['cam', 'conteudo']) {           // cam primeiro: costuma ser menor
-    const c = caixas[nome];
-    const cs = cantos(c);
+  const ordem = travado ? [travado] : ['cam', 'conteudo'];
+  const dentro = (c) => mx >= c.x && mx <= c.x + c.w && my >= c.y && my <= c.y + c.h;
+  for (const nome of ordem) {
+    const cs = cantos(caixas[nome]);
     for (let i = 0; i < 4; i++) {
       if (Math.hypot(mx - cs[i][0], my - cs[i][1]) < 14 * fator()) return { nome, canto: i };
     }
   }
-  for (const nome of ['cam', 'conteudo']) {
-    const c = caixas[nome];
-    if (mx >= c.x && mx <= c.x + c.w && my >= c.y && my <= c.y + c.h) return { nome, canto: -1 };
+  for (const nome of ordem) {
+    if (dentro(caixas[nome])) return { nome, canto: -1 };
   }
   return null;
 }
 
+for (const b of document.querySelectorAll('.chip[data-caixa]')) {
+  b.addEventListener('click', () => {
+    travado = travado === b.dataset.caixa ? null : b.dataset.caixa;   // clicar de novo destrava
+    for (const o of document.querySelectorAll('.chip[data-caixa]')) {
+      o.classList.toggle('on', o.dataset.caixa === travado);
+    }
+    desenhar();
+  });
+}
+
 palco.addEventListener('mousedown', ev => {
-  const [mx, my] = pontoDoMouse(ev);
+  // a posição do canvas é medida UMA vez, aqui: durante o arrasto a página pode se mexer
+  // (um aviso que aparece, uma barra de rolagem), e remedir faria o retângulo pular junto
+  const retangulo = palco.getBoundingClientRect();
+  const [mx, my] = pontoDoMouse(ev, retangulo);
   const a = alvo(mx, my);
-  if (a) arrasto = { ...a, mx, my, inicial: { ...caixas[a.nome] } };
+  if (a) arrasto = { ...a, mx, my, retangulo, inicial: { ...caixas[a.nome] } };
 });
 
 addEventListener('mousemove', ev => {
   if (!arrasto) return;
-  const [mx, my] = pontoDoMouse(ev);
+  const [mx, my] = pontoDoMouse(ev, arrasto.retangulo);
   const dx = mx - arrasto.mx, dy = my - arrasto.my, i = arrasto.inicial;
   const c = caixas[arrasto.nome];
   if (arrasto.canto < 0) {

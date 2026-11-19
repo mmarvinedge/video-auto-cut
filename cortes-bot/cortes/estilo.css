@@ -343,9 +343,12 @@ dialog::backdrop { background: rgba(10, 5, 22, .72); backdrop-filter: blur(3px);
 .medidas td b { color: var(--tinta); font-variant-numeric: tabular-nums;
                 font-size: 14px; letter-spacing: 0; text-transform: none; }
 #recado { font-size: 13px; color: var(--lima); min-height: 18px; }
+/* o espaço do aviso fica reservado mesmo vazio: se ele crescesse ao aparecer, empurraria o
+   canvas no meio do arrasto, e o retângulo pularia junto com a página */
+#aviso { min-height: 2.4em; font-size: 13px; border: 1px solid transparent;
+         border-radius: var(--r-p); padding: 7px 11px; box-sizing: border-box; }
 #aviso:not(:empty) { background: var(--ouro-fog); color: var(--ouro);
-                     border: 1px solid rgba(255, 196, 107, .45); border-radius: var(--r-p);
-                     padding: 7px 11px; font-size: 13px; }
+                     border-color: rgba(255, 196, 107, .45); }
 
 /* ---------------------------------------------------------------- telas estreitas */
 
@@ -398,7 +401,14 @@ progress.progresso:not([value])::-webkit-progress-bar {
 #dlg-enq .linha h2 { margin: 0; flex: 0 0 auto; }
 #dlg-enq .enq { display: flex; flex-direction: column; }
 #dlg-enq .linha button { margin-left: auto; }
-#enq-quadro { width: 100%; height: min(74vh, 820px); border: 1px solid var(--borda); border-radius: var(--r); background: var(--noite-1); }
+/* o fim da rolagem dentro do diálogo não pode virar rolagem da página atrás dele: `contain`
+   corta essa emenda (dentro do iframe também, por isso a regra em `html` logo abaixo), e com o
+   diálogo aberto a página de trás fica travada */
+html { overscroll-behavior: contain; }
+body:has(dialog[open]) { overflow: hidden; }
+#dlg-enq .enq { overscroll-behavior: contain; }
+#enq-quadro { width: 100%; height: min(74vh, 820px); border: 1px solid var(--borda);
+              border-radius: var(--r); background: var(--noite); overscroll-behavior: contain; }
 
 .novo-canal {
   display: flex; flex-direction: column; gap: 12px; max-width: 560px;
@@ -465,3 +475,9 @@ progress.progresso:not([value])::-webkit-progress-bar {
 #pr-copiado { color: var(--lima); font-weight: 400; letter-spacing: 0; }
 .linha-ia .prompt:hover:not(:disabled) { border-color: var(--ouro); color: var(--ouro);
                                          box-shadow: 0 0 14px var(--ouro-fog); }
+
+/* os chips da legenda viraram botões: travam qual retângulo o arrasto move */
+button.chip { background: none; border: 1px solid transparent; border-radius: var(--r-p);
+              padding: 3px 9px; cursor: pointer; font: inherit; color: var(--tinta-2); }
+button.chip:hover { border-color: var(--borda-viva); }
+button.chip.on { border-color: var(--ciano); background: var(--ciano-fog); color: var(--tinta); }
