@@ -363,17 +363,17 @@ dialog::backdrop { background: rgba(10, 5, 22, .72); backdrop-filter: blur(3px);
 .opcoes { display: flex; gap: 8px 18px; flex-wrap: wrap; font-size: 13px; color: var(--tinta-2); }
 .opcoes label { display: flex; gap: 6px; align-items: center; }
 
-progress.barra {
+progress.progresso {
   width: 100%; height: 6px; margin-top: 6px; border: 0; border-radius: 3px;
   background: var(--noite-3); appearance: none;
 }
-progress.barra::-webkit-progress-bar { background: var(--noite-3); border-radius: 3px; }
-progress.barra::-webkit-progress-value {
+progress.progresso::-webkit-progress-bar { background: var(--noite-3); border-radius: 3px; }
+progress.progresso::-webkit-progress-value {
   background: linear-gradient(90deg, var(--rosa), var(--ciano)); border-radius: 3px;
   transition: width .3s;
 }
 /* sem value o navegador anima sozinho; a listra deixa claro que é "não sei quanto falta" */
-progress.barra:not([value])::-webkit-progress-bar {
+progress.progresso:not([value])::-webkit-progress-bar {
   background: repeating-linear-gradient(135deg, var(--noite-3) 0 10px, var(--borda) 10px 20px);
 }
 

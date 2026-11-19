@@ -263,17 +263,17 @@ function recarregarVideo(el, c) {
 /** Acompanha o trabalho até ele acabar e troca o vídeo do card. `esperarComecar` serve para o
  *  enquadramento, onde quem dispara a recompilação é o Aplicar da oficina, noutra aba. */
 function barra(el, fracao) {
-  let b = $(".barra", el);
+  let b = $(".progresso", el);
   if (!b) {
     b = document.createElement("progress");
-    b.className = "barra";
+    b.className = "progresso";
     b.max = 1;
     $(".salvo", el).after(b);
   }
   if (fracao == null) b.removeAttribute("value"); else b.value = fracao;   // sem valor = indefinida
 }
 
-const tirarBarra = el => $(".barra", el)?.remove();
+const tirarBarra = el => $(".progresso", el)?.remove();
 
 async function acompanhar(el, c, esperarComecar = false) {
   const recado = $(".salvo", el);
@@ -313,13 +313,23 @@ const esperarRecompilar = (el, c) => acompanhar(el, c, true);
 
 /** A oficina é outro servidor (porta 8810), então entra como iframe: a página é a mesma, mas
  *  sem trocar de aba. Quem clica Aplicar lá dentro dispara a recompilação, e o card acompanha. */
+let OFICINA = "";
+
 function abrirOficina(url, alvo) {
+  OFICINA = new URL(url).origin;
   $("#enq-alvo").textContent = alvo || "";
   $("#enq-quadro").src = url + "?t=" + Date.now();
   $("#dlg-enq").showModal();
 }
 
 $("#enq-fechar").addEventListener("click", () => $("#dlg-enq").close());
+
+// a oficina avisa quando aplicou (ela é outra origem, daí o postMessage); conferir de onde veio
+// importa: sem isso qualquer página aberta poderia fechar o diálogo no meio do ajuste
+addEventListener("message", ev => {
+  if (ev.origin !== OFICINA || ev.data?.de !== "enquadramento" || !ev.data.salvo) return;
+  $("#dlg-enq").close();
+});
 $("#dlg-enq").addEventListener("close", () => { $("#enq-quadro").src = "about:blank"; });
 
 // ------------------------------------------------- prompt para colar noutro chat
@@ -766,7 +776,7 @@ async function verTrabalho() {
   const pct = a.progresso == null ? "" : ` ${Math.round(a.progresso * 100)}%`;
   caixa.innerHTML = `<div class="trabalho ${a.erro ? "erro" : a.rodando ? "rodando" : "feito"}">
     <div class="linha"><span>${esc(a.titulo || a.url)}</span>${estado}<span class="motivo">${min} min${pct}</span></div>
-    ${a.rodando ? `<progress class="barra" max="1"${a.progresso == null ? "" : ` value="${a.progresso}"`}></progress>` : ""}
+    ${a.rodando ? `<progress class="progresso" max="1"${a.progresso == null ? "" : ` value="${a.progresso}"`}></progress>` : ""}
     ${a.erro ? `<p class="motivo">${esc(a.erro)}</p>` : ""}
     ${!a.rodando && !a.erro ? `<p class="motivo">Os cortes estão na aba <a href="#revisao">Revisão</a>.</p>` : ""}
     <pre class="log">${esc(t.log.slice(-14).join(String.fromCharCode(10)))}</pre>

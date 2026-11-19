@@ -161,6 +161,11 @@ document.getElementById('salvar').addEventListener('click', async () => {
     body: JSON.stringify({ cam: caixas.cam, conteudo: caixas.conteudo }),
   });
   const r = await resp.json();
+  // dentro do painel esta página é um iframe de outra porta: o aviso vai por postMessage,
+  // e é ele que fecha o diálogo — quem aplicou já terminou o que veio fazer aqui
+  if (r.ok && window.parent !== window) {
+    parent.postMessage({ de: 'enquadramento', salvo: true, recompilando: !!r.depois }, '*');
+  }
   document.getElementById('recado').textContent = !r.ok ? 'Falhou.'
     : r.aviso ? 'Salvo, mas não deu para recompilar: ' + r.aviso
     : r.depois ? 'Salvo. Recompilando o corte — acompanhe no painel; pode fechar esta aba.'
