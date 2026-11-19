@@ -12,6 +12,10 @@ import numpy as np
 from . import config
 
 os.environ.setdefault("HF_HUB_DISABLE_SYMLINKS_WARNING", "1")
+# O hf_xet (downloader novo do Hugging Face) exige instruções de CPU que nem todo processador tem:
+# num Ryzen 3 3300X o processo morre com "Fatal Error: HW capability found ..." só de importá-lo.
+# O download por HTTP comum funciona em qualquer máquina; quem quiser o xet define a variável como 0.
+os.environ.setdefault("HF_HUB_DISABLE_XET", "1")
 
 
 def _dlls_cuda() -> None:

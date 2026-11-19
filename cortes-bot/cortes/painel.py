@@ -55,7 +55,10 @@ def ficha(p: Path) -> dict:
 
 
 def _arquivos_json(dados: Path) -> list[Path]:
-    return sorted(dados.glob("*/candidatos/*.json"), key=lambda p: p.stat().st_mtime, reverse=True)
+    # só o resultado de cada live (<id>_audio.json / <id>.json); uma cópia como
+    # "<id>_audio.backup.json" na mesma pasta virava cortes duplicados no painel
+    return sorted((p for p in dados.glob("*/candidatos/*.json") if "." not in p.stem),
+                  key=lambda p: p.stat().st_mtime, reverse=True)
 
 
 def listar(dados: Path) -> list[dict]:
@@ -173,6 +176,9 @@ def atualizar(dados: Path, ident: str, mudancas: dict) -> dict:
         # aprovado -> copia para a pasta de prontos; desaprovado -> tira de la
         if rev["status"] == "aprovado":
             if nome := exportar(d.get("canal", ""), c):
+                # o nome leva o título: mudou o título, a cópia antiga ficaria duplicada em prontos/
+                if (antigo := rev.get("exportado")) and antigo != nome:
+                    _apagar_exportado(antigo)
                 rev["exportado"] = nome
         elif (antigo := rev.pop("exportado", None)):
             _apagar_exportado(antigo)
