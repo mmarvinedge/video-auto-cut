@@ -16,7 +16,15 @@ def _url_videos(canal: dict) -> str:
 def listar(canal: dict, n: int = 5) -> list[dict]:
     cmd = [sys.executable, "-m", "yt_dlp", "--flat-playlist", "--playlist-items", f"1:{n}", "-J", _url_videos(canal)]
     out = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", check=True).stdout
-    return [{"id": e.get("id"), "titulo": e.get("title"), "duracao": e.get("duration"), "url": e.get("url")} for e in json.loads(out).get("entries", [])]
+    # No Kick o yt-dlp devolve a url com um "#__youtubedl_smuggle=..." (dado interno dele, que só
+    # repete a disponibilidade). Ele baixa igual sem isso, e com isso a url não passa na validação
+    # do painel: todo VOD do Kick era recusado como "endereço inválido".
+    return [{"id": e.get("id"), "titulo": e.get("title"), "duracao": e.get("duration"),
+             "url": limpar_url(e.get("url") or "")} for e in json.loads(out).get("entries", [])]
+
+
+def limpar_url(url: str) -> str:
+    return url.split("#", 1)[0]
 
 
 def baixar(url: str, pasta: Path, altura_max: int = 1080) -> Path:

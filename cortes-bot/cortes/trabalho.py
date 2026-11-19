@@ -3,6 +3,7 @@
 Um trabalho por vez (os dois passos usam GPU e rede pesado; dois juntos só atrasam os dois).
 O painel pergunta o estado por `/api/trabalho` e mostra as últimas linhas do log.
 """
+import os
 import re
 import subprocess
 import sys
@@ -68,7 +69,10 @@ def _rodar(argumentos: list[str]) -> list[str]:
     cmd = [sys.executable, "-u", "-m", "cortes", *argumentos]
     _escrever("$ " + " ".join(argumentos))
     saida: list[str] = []
-    p = subprocess.Popen(cmd, cwd=str(config.RAIZ), stdout=subprocess.PIPE,
+    # Sem isto, no Windows o filho escreve no pipe em cp1252: "pedaços" chegava como "peda�os", e
+    # imprimir um emoji (título de live, título da IA) derrubava o processo com UnicodeEncodeError.
+    env = {**os.environ, "PYTHONIOENCODING": "utf-8", "PYTHONUTF8": "1"}
+    p = subprocess.Popen(cmd, cwd=str(config.RAIZ), stdout=subprocess.PIPE, env=env,
                          stderr=subprocess.STDOUT, text=True, encoding="utf-8", errors="replace", bufsize=1)
     for linha in p.stdout:
         linha = linha.rstrip()
@@ -126,6 +130,7 @@ def _trabalhar(nome_canal: str, url: str, titulo: str, opcoes: list[str]) -> Non
 def comecar(nome_canal: str, url: str, titulo: str = "", opcoes: list[str] | None = None) -> dict:
     """Dispara o trabalho. Levanta RuntimeError se já tiver um rodando."""
     global _atual
+    url = vod.limpar_url(url)   # tira o "#__youtubedl_smuggle=..." que o yt-dlp põe nas do Kick
     if not re.fullmatch(r"https://(www\.)?(twitch\.tv|kick\.com)/[\w./-]+", url):
         raise ValueError("endereço de VOD inválido")
     permitidas = {"--sem-render", "--sem-whisper", "--sem-ia", "--sem-tiktok"}
