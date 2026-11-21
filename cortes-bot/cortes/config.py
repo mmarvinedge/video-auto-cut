@@ -7,7 +7,9 @@ import yaml
 
 RAIZ = Path(__file__).resolve().parent.parent
 
-PLATAFORMAS = {"twitch.tv": "twitch", "www.twitch.tv": "twitch", "kick.com": "kick", "www.kick.com": "kick"}
+PLATAFORMAS = {"twitch.tv": "twitch", "www.twitch.tv": "twitch", "kick.com": "kick", "www.kick.com": "kick",
+               "youtube.com": "youtube", "www.youtube.com": "youtube", "m.youtube.com": "youtube"}
+SITES = {"twitch": "https://www.twitch.tv", "kick": "https://kick.com", "youtube": "https://www.youtube.com"}
 LOGIN = re.compile(r"^[A-Za-z0-9_][A-Za-z0-9_-]{2,30}$")
 
 
@@ -17,8 +19,12 @@ def ler_endereco(texto: str) -> tuple[str, str]:
     host, _, resto = t.partition("/")
     plataforma = PLATAFORMAS.get(host.lower())
     if not plataforma:
-        raise ValueError("endereço precisa ser de twitch.tv ou kick.com, ex.: https://www.twitch.tv/alanzoka")
+        raise ValueError("endereço precisa ser de twitch.tv, kick.com ou youtube.com, ex.: https://www.twitch.tv/alanzoka")
     login = resto.split("/")[0].split("?")[0]
+    if plataforma == "youtube":
+        if not login.startswith("@"):
+            raise ValueError("no YouTube use o endereço do canal com @, ex.: https://www.youtube.com/@alanzoka")
+        login = login[1:]
     if not LOGIN.match(login):
         raise ValueError(f"não achei o nome do streamer em “{texto}”")
     return plataforma, login
@@ -29,17 +35,20 @@ def adicionar_canal(endereco: str, destino: str = "", caminho: str | Path = RAIZ
     plataforma, login = ler_endereco(endereco)
     nome = login.lower()
     cfg = carregar(caminho)
-    if nome in (cfg.get("canais") or {}):
+    existentes = cfg.get("canais") or {}
+    if nome in existentes and existentes[nome].get("plataforma") != plataforma:
+        nome = f"{nome}_{plataforma}"   # mesmo nome em outra plataforma (ex.: alanzoka na Twitch e no YouTube)
+    if nome in existentes:
         raise ValueError(f"{login} já está na lista de streamers")
 
     destino = (destino or "").strip()[:80] or f"Cortes do {login}"
-    url = f"https://{'www.twitch.tv' if plataforma == 'twitch' else 'kick.com'}/{login}"
+    url = f"{SITES[plataforma]}/{'@' if plataforma == 'youtube' else ''}{login}"
     bloco = (f"\n  {nome}:\n"
              f"    plataforma: {plataforma}\n"
              f"    login: {login}\n"
              f"    url: {url}\n"
              f"    canal_destino: {json.dumps(destino, ensure_ascii=False)}\n"
-             f"    credito: {'twitch.tv' if plataforma == 'twitch' else 'kick.com'}/{login}\n"
+             f"    credito: {url.removeprefix('https://').removeprefix('www.')}\n"
              f"    facecam: null   # ajuste pelo botão “Ajustar enquadramento” depois de baixar um trecho\n")
 
     linhas = Path(caminho).read_text(encoding="utf-8").splitlines(keepends=True)
