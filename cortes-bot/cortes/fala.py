@@ -14,20 +14,30 @@ def texto(palavras: list[dict], inicio: float | None = None, fim: float | None =
                     if (inicio is None or p["e"] > inicio) and (fim is None or p["s"] < fim))
 
 
-def nota_fala(palavras: list[dict], inicio: float, fim: float, reacoes: list[str]) -> dict:
-    """Pontua a fala dentro do corte: expressões de reação, exclamações e ritmo."""
+def _contar(termos: list[str], t: str) -> int:
+    return sum(len(re.findall(rf"(?<!\w){re.escape(_norm(r))}(?!\w)", t)) for r in termos)
+
+
+def nota_fala(palavras: list[dict], inicio: float, fim: float, reacoes: list[str],
+              pausas: list[str] | None = None, peso_pausa: float = 2.0) -> dict:
+    """Pontua a fala dentro do corte: expressões de reação, exclamações e ritmo.
+
+    `pausas` são falas de quem está saindo ou voltando da live ("vou almoçar", "voltei"). Sem chat
+    e sem IA, elas apareciam entre os melhores momentos só por serem faladas alto; cada uma tira
+    `peso_pausa` da nota (no máximo duas contam, para um corte bom com um "já volto" não morrer)."""
     dentro = [p for p in palavras if p["e"] > inicio and p["s"] < fim]
     duracao = max(fim - inicio, 1)
     t = _norm(texto(dentro))
-    hits = sum(len(re.findall(rf"(?<!\w){re.escape(_norm(r))}(?!\w)", t)) for r in reacoes)
+    hits = _contar(reacoes, t)
+    n_pausas = _contar(pausas or [], t)
     risadas = len(re.findall(r"\b(k{3,}|(?:ha){2,}h?|(?:he){2,}h?)\b", t))
     exclam = t.count("!")
     ritmo = len(dentro) / duracao  # palavras por segundo
-    bruto = hits * 1.0 + risadas * 1.5 + exclam * 0.4 + min(ritmo, 3.5) * 0.6
+    bruto = hits * 1.0 + risadas * 1.5 + exclam * 0.4 + min(ritmo, 3.5) * 0.6 - min(n_pausas, 2) * peso_pausa
     if not dentro:
         bruto = -2.0  # corte sem fala nenhuma raramente funciona em vertical
     return {"bruto": round(bruto, 2), "reacoes": hits, "risadas": risadas, "exclamacoes": exclam,
-            "palavras_por_s": round(ritmo, 2)}
+            "palavras_por_s": round(ritmo, 2), "pausas": n_pausas}
 
 
 def ajustar_bordas(palavras: list[dict], inicio: float, fim: float, folga: float = 4.0,
