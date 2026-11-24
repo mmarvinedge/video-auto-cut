@@ -10,6 +10,9 @@
   python -m cortes processar <canal> <video.mp4>      gera as duas versões: curtos (Shorts/Reels) e TikTok (>1 min)
   python -m cortes painel                             abre o painel de revisão em http://localhost:8800
   python -m cortes enquadrar <canal> <video.mp4>      escolhe na tela o recorte da cam e do conteúdo
+  python -m cortes edit <filme> <musica>              edit de filme: gancho com fala + planos na batida
+  python -m cortes edit-render <plano.json>           renderiza de novo um edit depois de mexer no plano
+  python -m cortes baixar-youtube <url> [--audio] [--qualidade q]   baixa um vídeo (ou o áudio) do YouTube para um edit
 """
 import argparse
 import asyncio
@@ -19,6 +22,60 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from . import chat_twitch, config, detect, legendas, render, vod
+
+
+def cmd_edit(cfg, a):
+    from . import edit, youtube
+    # um endereço do YouTube no lugar do arquivo: baixa antes (ou reaproveita o já baixado)
+    filme = youtube.resolver(a.filme, False, a.qualidade_filme, cfg).resolve()
+    musica = youtube.resolver(a.musica, True, a.qualidade_musica, cfg).resolve()
+    for arq in (filme, musica):
+        if not arq.exists():
+            raise SystemExit(f"Não achei {arq}")
+    ajustes = {"proporcao": a.proporcao, "slowed": a.slowed,
+               "musica_no_gancho": {"sim": True, "nao": False}.get(a.musica_no_gancho),
+               "volume_musica": a.volume_musica,
+               "transicoes": edit.ler_transicoes(a.transicoes) if a.transicoes is not None else None,
+               "idioma": edit.ler_idioma(a.idioma) if a.idioma else None}
+    cfg["edit"] = {**(cfg.get("edit") or {}), **{k: v for k, v in ajustes.items() if v is not None}}
+    t0 = time.time()
+    plano = edit.planejar(filme, musica, cfg, tema=a.tema or "", trecho=edit.ler_intervalo(a.trecho),
+                          gancho=a.gancho, drop=edit.ler_tempo(a.drop) if a.drop else None,
+                          usar_ia=not a.sem_ia, duracao=a.duracao,
+                          drop_filme=edit.ler_tempo(a.drop_filme) if a.drop_filme else None,
+                          ritmo=a.ritmo, abertura={"sim": True, "nao": False}.get(a.abertura),
+                          fala_drop=edit.ler_tempo(a.fala_drop) if a.fala_drop else None,
+                          drop_fala=a.drop_fala)
+    print(f"Plano em {config.relativo(plano)}")
+    if a.so_planejar:
+        return
+    _edit_render(cfg, plano, t0, a.prontos)
+
+
+def _edit_render(cfg, plano: Path, t0: float, prontos: bool) -> None:
+    from . import edit
+    print("Renderizando...")
+    video = edit.renderizar(plano)
+    print(f"Pronto em {time.time() - t0:.0f}s: {config.relativo(video)}")
+    if prontos and (copia := edit.copiar_para_prontos(video, cfg)):
+        print(f"Cópia em {copia}")
+
+
+def cmd_baixar_youtube(cfg, a):
+    from . import youtube
+    arq = youtube.baixar(youtube.validar(a.url), a.audio, youtube.pasta(cfg), q=a.qualidade)
+    print(f"Arquivo: {arq}")      # o painel lê esta linha para preencher o campo do edit
+
+
+def cmd_edit_render(cfg, a):
+    if a.previa:
+        from . import edit
+        t0 = time.time()
+        print("Renderizando a prévia...")
+        video = edit.renderizar(Path(a.plano).resolve(), previa=True)
+        print(f"Prévia pronta em {time.time() - t0:.0f}s: {config.relativo(video)}")
+        return
+    _edit_render(cfg, Path(a.plano).resolve(), time.time(), a.prontos)
 
 
 def cmd_vods(cfg, a):
@@ -369,6 +426,46 @@ def main():
     s = sub.add_parser("painel"); s.add_argument("--porta", type=int, default=8800); s.set_defaults(f=cmd_painel)
     s = sub.add_parser("enquadrar"); s.add_argument("canal"); s.add_argument("video")
     s.add_argument("--porta", type=int, default=8810); s.set_defaults(f=cmd_enquadrar)
+    s = sub.add_parser("edit", help="edit de filme: gancho com fala + planos cortados na batida da música")
+    s.add_argument("filme", help="arquivo do filme ou endereço do YouTube (é baixado antes)")
+    s.add_argument("musica", help="arquivo da música ou endereço do YouTube (só o áudio é baixado)")
+    s.add_argument("--qualidade-filme", choices=["1080", "720", "480", "melhor"],
+                   help="com o filme no YouTube: até quantas linhas baixar (padrão 1080)")
+    s.add_argument("--qualidade-musica", choices=["melhor", "192", "128"],
+                   help="com a música no YouTube: kbps do mp3 (padrão melhor)")
+    s.add_argument("--tema", help='dica para a IA, ex.: "o romance do Peter e da Gwen"')
+    s.add_argument("--trecho", help="só esta parte do filme, ex.: 1:20:00-1:42:00 (mais rápido e mais focado)")
+    s.add_argument("--gancho", help="fala de gancho escolhida à mão, ex.: 1:23:10-1:23:19")
+    s.add_argument("--drop", help="segundo da música (já tratada) onde os cortes começam")
+    s.add_argument("--fala-drop", help="com --drop-filme: segundo do filme em que a fala do drop termina "
+                   "(o som do filme segue por cima da música até ali, com legenda)")
+    s.add_argument("--drop-fala", choices=["depois", "durante"],
+                   help="fala do gatilho: depois = o drop entra quando ela acaba; durante = junto, com a música mais baixa")
+    s.add_argument("--ritmo", choices=["rapido", "normal", "lento"], help="tamanho dos cortes (sem isso: o tema)")
+    s.add_argument("--abertura", choices=["sim", "nao"],
+                   help="falas do filme antes do gancho, sem música (sem isso: o tema)")
+    s.add_argument("--drop-filme", help="momento do filme que cai no drop, ex.: 3:56 (o estalo); o gancho termina ali")
+    s.add_argument("--proporcao", choices=["4:5", "9:16"], help="4:5 com tarjas (padrão do config) ou 9:16 tela cheia")
+    s.add_argument("--slowed", type=float, help="velocidade da música: 1 = original, 0.85 = slowed")
+    s.add_argument("--volume-musica", type=float,
+                   help="volume da música sobre o nível padrão: 1 = padrão, 0.6 = mais baixa, 1.3 = mais alta")
+    s.add_argument("--musica-no-gancho", choices=["sim", "nao"],
+                   help="nao = música muda durante o gancho, entra só no drop (mais impacto)")
+    s.add_argument("--duracao", type=float, help="segundos da parte cortada na batida (sem isso: o tema, depois o config)")
+    s.add_argument("--idioma", help="idioma da fala do filme para o Whisper: pt (padrão), en, es... ou auto")
+    s.add_argument("--transicoes", help="variadas (padrão), nenhuma, ou lista: zoom,flash,chicote,giro,fusao")
+    s.add_argument("--sem-ia", action="store_true", help="escolhe gancho e planos sem a IA")
+    s.add_argument("--so-planejar", action="store_true", help="grava o plano.json sem renderizar")
+    s.add_argument("--prontos", action="store_true", help="copia o vídeo e a legenda para a pasta de prontos")
+    s.set_defaults(f=cmd_edit)
+    s = sub.add_parser("baixar-youtube", help="baixa um vídeo do YouTube para usar num edit")
+    s.add_argument("url"); s.add_argument("--audio", action="store_true", help="só o áudio, em mp3 (para a música)")
+    s.add_argument("--qualidade", help="vídeo: 1080 (padrão), 720, 480 ou melhor; áudio: melhor (padrão), 192 ou 128")
+    s.set_defaults(f=cmd_baixar_youtube)
+    s = sub.add_parser("edit-render"); s.add_argument("plano")
+    s.add_argument("--previa", action="store_true", help="prévia rápida em 540 px (previa.mp4), para conferir um ajuste")
+    s.add_argument("--prontos", action="store_true", help="copia o vídeo e a legenda para a pasta de prontos")
+    s.set_defaults(f=cmd_edit_render)
     s = sub.add_parser("processar")
     s.add_argument("canal"); s.add_argument("video")
     s.add_argument("--chat", nargs="*"); s.add_argument("--inicio", type=float)

@@ -1,6 +1,7 @@
 """Painel local de revisão e publicação: http://localhost:8800
 
 - Lives: lista os VODs recentes do streamer e processa o escolhido com um clique.
+- Edits: monta um edit de filme (gancho com fala + planos na batida da música) a partir de um formulário.
 - Revisão: assiste aos cortes de todos os canais, edita título/descrição/hashtags, aprova ou rejeita.
 - Ao aprovar: escolhe em quais contas publicar e quando (próximo horário livre, agora ou data/hora).
 - Fila: acompanha, cancela, adianta ou tenta de novo cada publicação.
@@ -22,7 +23,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, unquote, urlparse
 
-from . import config, contas, fila, trabalho
+from . import config, contas, fila, painel_edit, trabalho
 
 _trava = threading.Lock()
 SEGURO = re.compile(r"^[\w.-]+$")
@@ -434,7 +435,7 @@ def opcoes_tiktok(tk: dict, escolhidas: list[dict]) -> dict:
 
 
 def estado() -> dict:
-    from . import ia, pub_tiktok, pub_youtube
+    from . import edit, ia, pub_tiktok, pub_youtube
 
     cfg = config.carregar()
     return {
@@ -443,6 +444,7 @@ def estado() -> dict:
         "plataformas": {k: v["nome"] for k, v in contas.PLATAFORMAS.items()},
         "duracao_max": {k: v["duracao_max"] for k, v in contas.PLATAFORMAS.items()},
         "ia_disponivel": ia.credenciais_disponiveis(),
+        "hashtags_fixas": list(ia.HASHTAGS_FIXAS), "max_hashtags": ia.MAX_HASHTAGS,
         "youtube_configurado": pub_youtube.configurado(cfg),
         "youtube_credencial": cfg["publicacao"]["youtube"]["client_secret"],
         "tiktok_configurado": pub_tiktok.configurado(cfg),
@@ -452,6 +454,9 @@ def estado() -> dict:
         "horarios": cfg["publicacao"]["horarios"], "fuso": cfg["publicacao"]["fuso"],
         "max_por_dia": cfg["publicacao"]["max_por_dia_por_conta"],
         "privacidade_youtube": cfg["publicacao"]["youtube"].get("privacidade", "public"),
+        "edit": {k: v for k, v in edit.cfg_edit(cfg).items() if k in ("proporcao", "slowed", "duracao_musica", "transicoes", "idioma",
+                                                                         "musica_no_gancho", "ritmo", "abertura",
+                                                                         "volume_musica", "drop_fala")},
     }
 
 
@@ -540,6 +545,43 @@ def servir(dados: Path, porta: int = 8800, trabalhador: bool = True) -> None:
                         self._json({"erro": str(e)}, 502)
                 elif url.path == "/api/trabalho":
                     self._json(trabalho.estado())
+                elif url.path == "/api/edits":
+                    self._json(painel_edit.listar(dados))
+                elif url.path == "/api/arquivos":
+                    q = parse_qs(url.query)
+                    self._json(painel_edit.navegar(dados, q.get("pasta", [""])[0], q.get("tipo", ["video"])[0]))
+                elif url.path.startswith("/video-edit/"):
+                    ident = unquote(url.path[len("/video-edit/"):])
+                    if parse_qs(url.query).get("previa"):
+                        self._video(painel_edit.previa(dados, ident))
+                    else:
+                        self._video(painel_edit.video(dados, ident))
+                elif url.path.startswith("/audio-edit/"):
+                    self._video(painel_edit.audio(dados, unquote(url.path[len("/audio-edit/"):])), "audio/wav")
+                elif url.path.startswith("/quadro-edit/"):
+                    q = parse_qs(url.query)
+                    jpg = painel_edit.quadro(dados, unquote(url.path[len("/quadro-edit/"):]),
+                                             float(q.get("t", ["0"])[0]), int(q.get("w", ["360"])[0]))
+                    self.send_response(200)
+                    self.send_header("Content-Type", "image/jpeg")
+                    self.send_header("Content-Length", str(len(jpg)))
+                    self.send_header("Cache-Control", "max-age=3600")
+                    self.end_headers()
+                    self.wfile.write(jpg)
+                elif m := re.fullmatch(r"/api/edits/(.+)/linha", url.path):
+                    self._json(painel_edit.linha(dados, unquote(m.group(1))))
+                elif m := re.fullmatch(r"/api/edits/(.+)/planos", url.path):
+                    self._json(painel_edit.planos(dados, unquote(m.group(1))))
+                elif url.path.startswith("/mini-edit/"):
+                    q = parse_qs(url.query)
+                    jpg = painel_edit.miniatura(dados, unquote(url.path[len("/mini-edit/"):]),
+                                                int(q.get("cena", ["0"])[0])).read_bytes()
+                    self.send_response(200)
+                    self.send_header("Content-Type", "image/jpeg")
+                    self.send_header("Content-Length", str(len(jpg)))
+                    self.send_header("Cache-Control", "max-age=3600")
+                    self.end_headers()
+                    self.wfile.write(jpg)
                 elif url.path == "/api/fila":
                     self._json(sorted(fila.listar(), key=lambda i: i["agendado_para"], reverse=True))
                 elif url.path.startswith("/api/prompt/"):
@@ -674,6 +716,37 @@ def servir(dados: Path, porta: int = 8800, trabalhador: bool = True) -> None:
                     self._json({"ok": True, "atual": trabalho.comecar(
                         nome, str(corpo.get("url") or ""), str(corpo.get("titulo") or ""),
                         list(corpo.get("opcoes") or []))})
+                elif caminho == "/api/edit":
+                    args, titulo = painel_edit.argumentos(corpo)
+                    atual = trabalho.comecar_comando(titulo, "montando o edit", args,
+                                                     "pronto: o edit está na lista abaixo")
+                    painel_edit.lembrar(dados, args[1], args[2])
+                    self._json({"ok": True, "atual": atual})
+                elif m := re.fullmatch(r"/api/edits/(.+)/(renderizar|prontos|texto|ajustar|desfazer|previa|corte)", caminho):
+                    ident, acao = m.groups()
+                    pasta = painel_edit.pasta_edit(dados, ident)
+                    if acao in ("ajustar", "desfazer", "corte") and (trabalho.estado().get("atual") or {}).get("rodando"):
+                        raise RuntimeError("tem um trabalho rodando: espere ele terminar para ajustar o plano")
+                    if acao == "ajustar":
+                        self._json({"ok": True, "plano": painel_edit.ajustar(dados, ident, corpo)})
+                    elif acao == "corte":
+                        self._json({"ok": True, "plano": painel_edit.editar_corte(dados, ident, corpo)})
+                    elif acao == "desfazer":
+                        self._json({"ok": True, "plano": painel_edit.desfazer(dados, ident)})
+                    elif acao == "previa":
+                        self._json({"ok": True, "atual": trabalho.comecar_comando(
+                            f"Prévia: {ident}", "renderizando a prévia",
+                            ["edit-render", str(pasta / "plano.json"), "--previa"], "pronto: a prévia está no ajuste",
+                            extra={"edit": ident})})
+                    elif acao == "renderizar":
+                        self._json({"ok": True, "atual": trabalho.comecar_comando(
+                            f"Edit: {ident}", "renderizando o edit de novo",
+                            ["edit-render", str(pasta / "plano.json")], "pronto: o edit está na lista abaixo")})
+                    elif acao == "prontos":
+                        self._json({"ok": True, "arquivo": painel_edit.para_prontos(dados, ident)})
+                    else:
+                        painel_edit.salvar_texto(dados, ident, corpo)
+                        self._json({"ok": True})
                 elif caminho == "/api/contas/simulacao":
                     nome = str(corpo.get("nome") or "").strip()[:60] or "Conta de teste"
                     self._json({"ok": True, "conta": contas.adicionar("simulacao", nome)})
@@ -693,8 +766,8 @@ def servir(dados: Path, porta: int = 8800, trabalhador: bool = True) -> None:
             except Exception as e:  # noqa: BLE001 - bug: o terminal mostra o traceback, o painel mostra o motivo
                 self._falha_interna(e)
 
-        def _video(self, p: Path):
-            """Serve o mp4 com suporte a Range (necessário para o player avançar/voltar)."""
+        def _video(self, p: Path, tipo: str = "video/mp4"):
+            """Serve o mp4 (ou o wav da música) com suporte a Range (o player avançar/voltar)."""
             total = p.stat().st_size
             ini, fim = 0, total - 1
             faixa = re.match(r"bytes=(\d*)-(\d*)", self.headers.get("Range", ""))
@@ -709,7 +782,7 @@ def servir(dados: Path, porta: int = 8800, trabalhador: bool = True) -> None:
                 self.send_header("Content-Range", f"bytes {ini}-{fim}/{total}")
             else:
                 self.send_response(200)
-            self.send_header("Content-Type", "video/mp4")
+            self.send_header("Content-Type", tipo)
             self.send_header("Accept-Ranges", "bytes")
             self.send_header("Content-Length", str(fim - ini + 1))
             self.end_headers()

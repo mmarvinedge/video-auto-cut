@@ -389,3 +389,123 @@ body:has(dialog[open]) { overflow: hidden; }
 @media (prefers-reduced-motion: reduce) {
   * { transition: none !important; animation: none !important; }
 }
+
+/* ---------------------------------------------------------------- edits de filme
+   O formulário é uma ficha de duas colunas: filme e música lado a lado (são o par que define o
+   edit), e o resto em linhas largas embaixo. Os ajustes finos ficam recolhidos. */
+
+.card-edit { background: var(--sup); border: 1px solid var(--borda); border-radius: var(--r); box-shadow: var(--sombra);
+             display: grid; grid-template-columns: auto 1fr; gap: 24px; padding: 20px; }
+.form-edit { max-width: 980px; display: flex; flex-direction: column; gap: 14px; }
+.form-edit > p { margin: 0; }
+.form-edit .campos { display: grid; gap: 12px 16px; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.form-edit .campo.largo { grid-column: 1 / -1; }
+.form-edit .campo .rotulo .motivo { text-transform: none; letter-spacing: 0; }
+.form-edit input:not([type="checkbox"]):not([type="radio"]), .form-edit select { width: 100%; }
+.arquivo { display: flex; gap: 8px; }
+.arquivo input { flex: 1; min-width: 0; }
+.arquivo button { flex: 0 0 auto; }
+.intervalo { display: flex; gap: 10px; align-items: center; color: var(--tinta-3); font-size: 13px; }
+.intervalo input { max-width: 160px; }
+.ajustes > summary { font-size: 13px; padding: 2px 0; }
+.ajustes[open] > summary { margin-bottom: 12px; }
+.form-edit .aviso { margin: 0; }
+#ed-lista { margin-top: 6px; display: grid; gap: 16px; }
+.gancho { font-size: 15px; font-weight: 600; color: var(--tinta); }
+.fone .vazio { width: 288px; height: 512px; display: grid; place-items: center; margin: 0; }
+
+/* filme e música: do computador ou do YouTube (endereço + qualidade do download) */
+.form-edit fieldset.fonte { border: 1px solid var(--borda); border-radius: var(--r-p); padding: 8px 12px 12px; margin: 0;
+                            min-width: 0; gap: 8px; }
+.form-edit fieldset.fonte legend { padding: 0 4px; }
+.fonte-de { display: flex; gap: 16px; flex-wrap: wrap; font-size: 13px; color: var(--tinta-2); }
+.fonte-de label { display: flex; gap: 6px; align-items: center; cursor: pointer; white-space: nowrap; }
+.fonte-de input { margin: 0; accent-color: var(--tinta); }
+.form-edit .fonte select { width: auto; flex: 0 0 auto; }
+
+/* seletor de arquivos (o navegador não dá o caminho do arquivo, então o painel lista as pastas) */
+#dlg-arq { width: min(94vw, 720px); }
+.arq-atalhos { display: flex; gap: 6px; flex-wrap: wrap; }
+.arq-atalhos button { font-size: 12px; padding: 4px 10px; }
+#arq-ir input { flex: 1; min-width: 0; }
+.arq-lista { list-style: none; margin: 0; padding: 4px; max-height: min(52vh, 460px); overflow: auto;
+             border: 1px solid var(--borda); border-radius: var(--r-p); background: var(--fundo);
+             overscroll-behavior: contain; }
+.arq-lista li.motivo { padding: 10px; }
+.arq-lista button { width: 100%; text-align: left; border: 1px solid transparent; background: none;
+                    padding: 6px 10px; border-radius: var(--r-p);
+                    display: flex; gap: 8px; justify-content: space-between; }
+.arq-lista button:hover { border-color: var(--borda-2); background: var(--sup-2); }
+.arq-lista button.arq { color: var(--info); }
+
+@media (max-width: 720px) {
+  .card-edit { grid-template-columns: 1fr; padding: 12px; gap: 16px; }
+  .form-edit .campos { grid-template-columns: 1fr; }
+  .intervalo input { max-width: none; }
+  .form-edit .fonte .arquivo { flex-wrap: wrap; }
+  .form-edit .fonte input[type="url"] { flex-basis: 100%; }
+}
+/* com a aba Edits são cinco: num celular elas quebram em duas linhas em vez de sumir pela direita */
+@media (max-width: 460px) {
+  nav { flex-wrap: wrap; gap: 4px 16px; }
+}
+
+/* ---------------------------------------------------------------- ajustar o edit (drop e gancho, cortes, geral) */
+
+#dlg-aj { width: min(96vw, 1080px); }
+.aj-abas { display: flex; gap: 20px; border-bottom: 1px solid var(--borda); }
+.aj-abas [role=tab] { background: none; border: none; border-bottom: 2px solid transparent; border-radius: 0;
+                      padding: 6px 0; margin-bottom: -1px; color: var(--tinta-3); }
+.aj-abas [role=tab]:hover { color: var(--tinta); background: none; }
+.aj-abas [role=tab][aria-selected=true] { color: var(--tinta); border-bottom-color: var(--tinta); font-weight: 500; }
+.aj-painel { display: grid; gap: 14px; }
+.aj-corpo { display: grid; grid-template-columns: minmax(240px, 360px) 1fr; gap: 16px; align-items: start; }
+.aj-filme { display: grid; gap: 8px; }
+.aj-filme img { width: 100%; max-height: 56vh; object-fit: contain; background: #000;
+                border: 1px solid var(--borda); border-radius: var(--r-p); }
+.aj-filme input[type=range], .aj-volume input { accent-color: var(--tinta); }
+.aj-filme input[type=range] { width: 100%; }
+.aj-nav { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+.aj-nav input { width: 9.5em; text-align: center; }
+.aj-lado { display: grid; gap: 12px; min-width: 0; }
+.aj-marcas { display: grid; gap: 6px; }
+.aj-marca { display: grid; grid-template-columns: 1fr auto auto auto auto; gap: 6px; align-items: center;
+            padding: 6px 8px; border: 1px solid var(--borda); border-radius: var(--r-p); }
+.aj-marca .valor { color: var(--info); min-width: 7.5em; text-align: right; }
+.aj-marca.off { opacity: .45; }
+.aj-marca button { padding: 4px 10px; }
+.aj-modo { display: grid; gap: 4px; }
+.aj-sem { display: flex; gap: 8px; align-items: center; color: var(--tinta-2); }
+.aj-falas { display: grid; gap: 4px; max-height: 24vh; overflow: auto; }
+.aj-fala { text-align: left; background: none; border: 1px solid transparent; padding: 4px 8px; }
+.aj-fala.on { border-color: var(--info); background: var(--info-f); }
+.aj-musica { display: grid; gap: 6px; }
+.aj-volume { display: flex; gap: 8px; align-items: center; margin-left: auto; }
+.aj-volume input { width: 160px; }
+.aj-volume output { min-width: 6.5em; color: var(--info); }
+.aj-musica canvas { width: 100%; display: block; cursor: pointer; border: 1px solid var(--borda);
+                    border-radius: var(--r-p); background: var(--fundo); }
+#aj-previa { width: min(100%, 300px); height: auto; justify-self: center; border-radius: var(--r-p); background: #000; }
+.aj-geral { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px 16px; }
+.aj-cortes { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; max-height: 52vh; overflow: auto; }
+.aj-corte { display: grid; grid-template-columns: 62px 1fr auto; gap: 10px; align-items: center;
+            padding: 6px 8px; border: 1px solid var(--borda); border-radius: var(--r-p); }
+.aj-corte img { width: 62px; aspect-ratio: 4 / 5; object-fit: cover; background: #000; border-radius: 4px; }
+.aj-corte-info { display: grid; gap: 4px; min-width: 0; }
+.aj-trans { display: flex; gap: 8px; align-items: center; }
+.aj-corte-acoes { display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
+.aj-corte-acoes button { padding: 4px 10px; }
+.aj-escolha { display: grid; gap: 8px; border: 1px solid var(--borda-2); border-radius: var(--r-p); padding: 10px; }
+.aj-grade { display: grid; grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: 8px;
+            max-height: 40vh; overflow: auto; }
+.aj-op { display: grid; gap: 4px; padding: 4px; background: var(--fundo); font-size: 12px; }
+.aj-op img { width: 100%; aspect-ratio: 4 / 5; object-fit: cover; border-radius: 4px; }
+.aj-op.usado { border-color: var(--pend); }
+.aj-op.atual { border-color: var(--info); }
+@media (max-width: 760px) {
+  .aj-corpo, .aj-geral { grid-template-columns: 1fr; }
+  .aj-marca { grid-template-columns: 1fr auto; }
+  .aj-marca .rotulo { grid-column: 1 / -1; }
+  .aj-corte { grid-template-columns: 62px 1fr; }
+  .aj-corte-acoes { grid-column: 1 / -1; justify-content: flex-start; }
+}

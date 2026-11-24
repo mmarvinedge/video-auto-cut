@@ -81,6 +81,29 @@ ia:
   ativo: true              # precisa de ANTHROPIC_API_KEY; sem ela o bot segue sem esta etapa
   contexto: ""             # dica opcional para a IA, ex.: "A live é de GTA 6, lançado em novembro de 2026."
 
+edit:                      # edits de filme: `python -m cortes edit <filme> <musica>`
+  gancho_min: 4            # segundos da fala de abertura, com a legenda neon
+  gancho_max: 12
+  gancho_longo: 40         # quando o tema pede a conversa inteira (a IA decide)
+  duracao_musica: 15       # segundos da parte cortada na batida
+  corte_min: 0.55          # cada plano dura entre estes valores (múltiplos de batida)
+  corte_max: 1.6
+  velocidade: 0.85         # câmera lenta dos planos da música (1 = normal)
+  proporcao: "4:5"         # "4:5" com tarjas pretas (o visual dos edits) | "9:16" tela cheia
+  idioma: pt               # da fala do filme, para o Whisper achar o gancho: pt, en, es... ou auto
+  slowed: 0.85             # 1 = música original; 0.85 = o "slowed" do TikTok
+  reverb: true
+  volume_gancho: 0.18      # a música entra baixinha debaixo da fala e sobe no drop
+  musica_no_gancho: true   # false: música muda durante o gancho, entra só no drop (mais impacto)
+  drop_fala: depois        # fala do gatilho no drop: depois (ela limpa, o drop quando acaba) | durante
+  volume_musica: 1.0       # a música é nivelada (-15 dB RMS); isto multiplica: 0.7 = mais baixa, 1.3 = mais alta
+  ritmo: normal            # rapido (um corte por batida) | normal | lento; o tema pode pedir outro
+  abertura: false          # falas do filme antes do gancho, sem música (o tema também pode pedir)
+  legenda_cor: "FF1E3C"    # brilho da legenda (RGB)
+  max_planos_ia: 150       # quantos planos a IA vê (em folhas de 30 miniaturas)
+  transicoes: [zoom, flash, chicote, giro, fusao]   # entre os planos; [] = corte seco (docs/edits.md)
+  cor: {contraste: 1.12, saturacao: 0.78, brilho: -0.03, vinheta: true, grao: 3}
+
 publicacao:
   fuso: America/Sao_Paulo
   horarios: ["11:00", "14:00", "18:00", "21:00"]   # horários em que a fila publica (um vídeo por conta por horário)
@@ -128,6 +151,14 @@ canais:
     canal_destino: Cortes do Coringa
     credito: kick.com/coringa
     facecam: null
+
+  bisteconee:
+    plataforma: twitch
+    login: bisteconee
+    url: https://www.twitch.tv/bisteconee
+    canal_destino: "Cortes do Bistecone"
+    credito: twitch.tv/bisteconee
+    facecam: null   # ajuste pelo botão “Ajustar enquadramento” depois de baixar um trecho
 
 kick_api:
   # Crie um app em https://kick.com/settings/developer e preencha via variáveis de ambiente:

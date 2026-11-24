@@ -147,6 +147,44 @@ def comecar(nome_canal: str, url: str, titulo: str = "", opcoes: list[str] | Non
     return atual
 
 
+def comecar_comando(titulo: str, passo: str, argumentos: list[str], fim: str = "", extra: dict | None = None) -> dict:
+    """Roda um `python -m cortes <argumentos>` qualquer na mesma vitrine (o edit de filme usa).
+    `fim` é o recado do último passo (onde ver o resultado). `extra` vai junto no estado, para a
+    página saber o que fazer com o resultado. Uma linha "Arquivo: <caminho>" na saída do comando
+    vira `resultado` no estado."""
+    global _atual
+    with _trava:
+        if _atual and _atual.get("rodando"):
+            raise RuntimeError(f"já estou processando {_atual['titulo'] or _atual['url']}. Espere terminar.")
+        _log.clear()
+        _atual = {"canal": "", "url": "", "titulo": titulo[:160], "opcoes": [], "tipo": argumentos[0],
+                  "passo": "começando", "rodando": True, "inicio": time.time(), "fim": None,
+                  "erro": None, "progresso": None, "resultado": None, **(extra or {})}
+        atual = dict(_atual)
+
+    def alvo():
+        try:
+            _passo(passo)
+            arquivos = [x[len("Arquivo: "):] for x in _rodar(argumentos) if x.startswith("Arquivo: ")]
+            if arquivos:
+                with _trava:
+                    if _atual:
+                        _atual["resultado"] = arquivos[-1]
+            _passo(fim or "pronto")
+        except Exception as e:                   # qualquer falha vira recado no painel
+            _escrever(f"ERRO: {e}")
+            with _trava:
+                if _atual:
+                    _atual["erro"] = str(e)
+        finally:
+            with _trava:
+                if _atual:
+                    _atual.update(rodando=False, fim=time.time())
+
+    threading.Thread(target=alvo, daemon=True).start()
+    return atual
+
+
 def comecar_funcao(titulo: str, nome_canal: str, fn) -> dict:
     """Mesma vitrine do processamento, para tarefas curtas feitas aqui dentro (re-renderizar
     um corte, por exemplo). `fn` recebe a função de log e devolve uma linha de resumo."""
