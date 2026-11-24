@@ -1,7 +1,7 @@
 # Bot de cortes — fase 1 (MVP local)
 
 Um canal de destino por streamer: **alanzoka** (Twitch), **paulinholokobr** e **coringa** (Kick).
-Configuração em `config.yaml`.
+Configuração em `config.yaml`. Como cada parte funciona por dentro: [docs/](docs/README.md).
 
 ## Instalação
 
@@ -148,6 +148,35 @@ TikTok limita cada conta a ~15 posts por dia via API.
 O acesso vale 180 dias e é renovado sozinho; se vencer ou for revogado, a conta aparece com
 "vincular de novo" na aba Contas.
 
+## Edits de filme
+
+Um edit tem duas partes: um **gancho** (uma fala marcante do filme, com a legenda neon) e a
+**música**, que entra no drop com os planos trocando na batida, em câmera lenta, com zoom, tremida
+e flash. O visual segue o dos canais de edit: recorte 4:5 com tarjas pretas, cor escurecida e grão.
+
+```
+python -m cortes edit "D:/filmes/Filme.mkv" "D:/musicas/Musica.mp3" --tema "o romance do Peter e da Gwen"
+```
+
+- No painel, a aba **Edits** tem o mesmo formulário (com um seletor para achar o filme e a música
+  nas pastas), acompanha o andamento e lista os edits feitos, com vídeo, título editável e
+  "Renderizar de novo".
+- O filme e a música são arquivos seus. Nada é baixado.
+- `--trecho 1:20:00-1:42:00` analisa só uma parte do filme (mais rápido, e a IA vê planos mais parecidos).
+- `--gancho 1:23:10-1:23:19` e `--drop 41.2` fixam à mão a fala e o ponto da música (já em slowed).
+- Sem `ANTHROPIC_API_KEY` (ou com `--sem-ia`), o gancho e os planos são escolhidos por heurística, bem pior.
+- `--so-planejar` só grava o `plano.json`. Depois de mexer nele (trocar um plano, o efeito, o gancho),
+  rode `python -m cortes edit-render <plano.json>`. `--prontos` copia o vídeo e o texto para `prontos/`.
+
+Fica tudo em `dados/edits/<filme>/`. As cenas, a transcrição e as miniaturas ficam em cache e servem para
+qualquer edit daquele filme. Cada edit tem a própria subpasta, com a música tratada, as folhas de miniaturas
+que a IA viu, o `plano.json`, o `edit.mp4` e o `edit.txt` (título, descrição e hashtags). Os ajustes
+de estilo ficam na seção `edit:` do `config.yaml`.
+
+**Direitos autorais**: filme e música comercial costumam levar Content ID. A receita vai para o dono
+dos direitos e pode vir strike, e o TikTok pode silenciar o áudio. Publique os edits numa conta separada
+da dos cortes.
+
 ## Antes de usar de verdade
 
 - **Facecam**: meça a posição da câmera de cada streamer (num print do VOD em 1920x1080) e preencha
@@ -177,6 +206,9 @@ estiver vinculada e você não quiser mostrar o login, use `--sem-vinculo`.
 ## Teste
 
 `python tests/teste_sintetico.py` gera uma live falsa de 10 minutos, com momentos conhecidos, e valida a detecção e os cortes 1080x1920.
+
+`python tests/teste_edit.py` gera uma música a 100 BPM e um filme falso com cortes conhecidos, e valida
+as batidas, o drop, os cortes de câmera e o render do edit (sem IA nem Whisper).
 
 `python tests/teste_publicacao.py` e `python tests/teste_tiktok.py` testam a fila, o YouTube e o TikTok
 com respostas simuladas (não publicam nada nem usam suas contas).
