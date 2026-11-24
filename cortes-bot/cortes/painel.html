@@ -79,26 +79,36 @@
       <form class="secao form-edit" id="ed-form" novalidate>
         <h2>Novo edit de filme</h2>
         <p>Uma fala marcante do filme abre o vídeo com a legenda neon. Depois a música entra e os planos trocam na batida.
-          O filme e a música são arquivos do seu computador. Se estiverem no YouTube, baixe primeiro aqui embaixo.</p>
-        <div class="youtube">
-          <span class="rotulo">Baixar do YouTube</span>
-          <span class="arquivo">
-            <input id="ed-yt-url" type="url" placeholder="https://www.youtube.com/watch?v=..." aria-label="Endereço do vídeo no YouTube" autocomplete="off">
-            <select id="ed-yt-campo" aria-label="Usar o arquivo baixado como">
-              <option value="filme">como Filme (vídeo)</option>
-              <option value="musica">como Música (só o áudio)</option>
-            </select>
-            <button type="button" id="ed-yt-baixar">Baixar</button>
-          </span>
-          <span class="motivo" id="ed-yt-recado" aria-live="polite"></span>
-        </div>
+          O filme e a música podem ser arquivos do seu computador ou vídeos do YouTube, que são baixados antes.</p>
         <div class="campos">
-          <label class="campo"><span class="rotulo">Filme</span>
-            <span class="arquivo"><input id="ed-filme" placeholder="D:\Filmes\Filme.mkv" autocomplete="off">
-              <button type="button" data-procurar="video" data-alvo="ed-filme">Procurar…</button></span></label>
-          <label class="campo"><span class="rotulo">Música</span>
-            <span class="arquivo"><input id="ed-musica" placeholder="D:\Músicas\Musica.mp3" autocomplete="off">
-              <button type="button" data-procurar="audio" data-alvo="ed-musica">Procurar…</button></span></label>
+          <fieldset class="campo fonte" data-campo="filme">
+            <legend class="rotulo">Filme</legend>
+            <div class="fonte-de" role="radiogroup" aria-label="De onde vem o filme">
+              <label><input type="radio" name="ed-filme-de" value="arquivo" checked> Do computador</label>
+              <label><input type="radio" name="ed-filme-de" value="youtube"> Do YouTube</label>
+            </div>
+            <span class="arquivo" data-de="arquivo"><input id="ed-filme" placeholder="D:\Filmes\Filme.mkv" autocomplete="off" aria-label="Arquivo do filme">
+              <button type="button" data-procurar="video" data-alvo="ed-filme">Procurar…</button></span>
+            <span class="arquivo" data-de="youtube" hidden><input id="ed-filme-url" type="url" autocomplete="off"
+                placeholder="https://www.youtube.com/watch?v=..." aria-label="Endereço do filme no YouTube">
+              <select id="ed-filme-qualidade" aria-label="Qualidade do download do filme">
+                <option value="1080">1080p</option><option value="720">720p</option><option value="480">480p</option>
+                <option value="melhor">Melhor que houver</option></select></span>
+          </fieldset>
+          <fieldset class="campo fonte" data-campo="musica">
+            <legend class="rotulo">Música</legend>
+            <div class="fonte-de" role="radiogroup" aria-label="De onde vem a música">
+              <label><input type="radio" name="ed-musica-de" value="arquivo" checked> Do computador</label>
+              <label><input type="radio" name="ed-musica-de" value="youtube"> Do YouTube</label>
+            </div>
+            <span class="arquivo" data-de="arquivo"><input id="ed-musica" placeholder="D:\Músicas\Musica.mp3" autocomplete="off" aria-label="Arquivo da música">
+              <button type="button" data-procurar="audio" data-alvo="ed-musica">Procurar…</button></span>
+            <span class="arquivo" data-de="youtube" hidden><input id="ed-musica-url" type="url" autocomplete="off"
+                placeholder="https://www.youtube.com/watch?v=..." aria-label="Endereço da música no YouTube">
+              <select id="ed-musica-qualidade" aria-label="Qualidade do áudio baixado">
+                <option value="melhor">Melhor (mp3 VBR)</option><option value="192">192 kbps</option>
+                <option value="128">128 kbps</option></select></span>
+          </fieldset>
           <label class="campo largo"><span class="rotulo">Tema <span class="motivo">(opcional: uma dica para a IA)</span></span>
             <input id="ed-tema" maxlength="300" placeholder="o romance do Peter e da Gwen"></label>
           <div class="campo"><span class="rotulo">Trecho do filme <span class="motivo">(opcional: só essa parte, mais rápido e coerente)</span></span>
@@ -1113,10 +1123,7 @@ async function buscarVods(atualizar) {
 function htmlTrabalho(t) {
   if (!t.atual) return "";
   const a = t.atual;
-  const ondeFica = a.tipo === "baixar-youtube"
-    ? (a.resultado ? `Baixado em <code>${esc(a.resultado)}</code>` + (abaAtual() === "edits"
-        ? `, já no campo ${a.campo === "musica" ? "Música" : "Filme"}.` : `. Use na aba <a href="#edits">Edits</a>.`) : "")
-    : !(a.tipo || "").startsWith("edit") ? `Os cortes estão na aba <a href="#revisao">Revisão</a>.`
+  const ondeFica = !(a.tipo || "").startsWith("edit") ? `Os cortes estão na aba <a href="#revisao">Revisão</a>.`
     : abaAtual() === "edits" ? "O edit está na lista abaixo." : `O edit está na aba <a href="#edits">Edits</a>.`;
   const estado = a.erro ? `<b class="ruim">falhou</b>` : a.rodando
     ? `<b class="andando">${esc(a.passo)}<span class="pontos">…</span></b>` : `<b class="bom">pronto</b>`;
@@ -1224,7 +1231,6 @@ async function verTrabalhoEdit() {
   $("#ed-trabalho").innerHTML = htmlTrabalho(t);
   const rodando = !!t.atual?.rodando;
   if (edRodava && !rodando) carregarEdits();      // acabou: o edit novo aparece na lista
-  usarBaixado(t.atual);
   edRodava = rodando;
   clearTimeout(edTimer);
   if (rodando && abaAtual() === "edits") edTimer = setTimeout(verTrabalhoEdit, 2000);
@@ -1268,32 +1274,25 @@ async function carregarEdits() {
 
 const valorDe = id => $("#" + id).value.trim();
 
-// Download do YouTube: quando termina, o arquivo vai para o campo escolhido. Uma vez por download
-// (o `inicio` identifica o trabalho), para não apagar o que a pessoa digitou depois.
-let ytUsado = null;
-function usarBaixado(a) {
-  if (!a || a.tipo !== "baixar-youtube" || a.rodando || a.erro || !a.resultado || ytUsado === a.inicio) return;
-  ytUsado = a.inicio;
-  $(a.campo === "musica" ? "#ed-musica" : "#ed-filme").value = a.resultado;
-  $("#ed-yt-recado").textContent = "";
+// Filme e música: do computador (caminho + Procurar) ou do YouTube (endereço + qualidade). O edit
+// baixa o que vier do YouTube antes de começar, no mesmo trabalho.
+const deOnde = campo => document.querySelector(`input[name="ed-${campo}-de"]:checked`).value;
+document.querySelectorAll("#ed-form .fonte").forEach(f => f.addEventListener("change", ev => {
+  if (!ev.target.matches('input[type="radio"]')) return;
+  f.querySelectorAll("[data-de]").forEach(el => { el.hidden = el.dataset.de !== ev.target.value; });
+  f.querySelector(`[data-de="${ev.target.value}"] input`).focus();
+}));
+function fonte(campo) {
+  const yt = deOnde(campo) === "youtube";
+  return { [campo]: valorDe(yt ? `ed-${campo}-url` : `ed-${campo}`), [`${campo}_de`]: yt ? "youtube" : "arquivo",
+           [`${campo}_qualidade`]: yt ? valorDe(`ed-${campo}-qualidade`) : "" };
 }
-
-$("#ed-yt-baixar").addEventListener("click", async ev => {
-  const url = valorDe("ed-yt-url");
-  if (!url) { $("#ed-yt-recado").textContent = "cole o endereço do vídeo"; return; }
-  ev.target.disabled = true;
-  $("#ed-yt-recado").textContent = "começando…";
-  const r = await api("/api/youtube", { url, campo: $("#ed-yt-campo").value });
-  ev.target.disabled = false;
-  $("#ed-yt-recado").textContent = r.ok ? "baixando… acompanhe abaixo" : r.erro;
-  if (r.ok) { $("#ed-yt-url").value = ""; verTrabalhoEdit(); }
-});
 
 $("#ed-form").addEventListener("submit", async ev => {
   ev.preventDefault();
   const botao = ev.target.querySelector("button[type=submit]");
   const pedido = {
-    filme: valorDe("ed-filme"), musica: valorDe("ed-musica"), tema: valorDe("ed-tema"),
+    ...fonte("filme"), ...fonte("musica"), tema: valorDe("ed-tema"),
     trecho_inicio: valorDe("ed-trecho-inicio"), trecho_fim: valorDe("ed-trecho-fim"),
     gancho_inicio: valorDe("ed-gancho-inicio"), gancho_fim: valorDe("ed-gancho-fim"),
     drop: valorDe("ed-drop"), drop_filme: valorDe("ed-drop-filme"), fala_drop: valorDe("ed-fala-drop"),

@@ -133,6 +133,35 @@ def main():
         pass
     print("ok  transições: escolha e opções")
 
+    # filme e música do computador ou do YouTube (com a qualidade do download), sem rede
+    from cortes import painel_edit, youtube
+    url = "https://www.youtube.com/watch?v=abc123XYZ"
+    args, titulo = painel_edit.argumentos({"filme": url, "filme_de": "youtube", "filme_qualidade": "720",
+                                           "musica": str(musica)})
+    assert args[:3] == ["edit", url, str(musica)] and "--qualidade-filme=720" in args and "YouTube" in titulo, args
+    args, _ = painel_edit.argumentos({"filme": str(filme), "musica": url, "musica_de": "youtube"})
+    assert args[2] == url and "--qualidade-musica=melhor" in args, args
+    for ruim in ({"filme": url, "filme_de": "youtube", "filme_qualidade": "4k", "musica": str(musica)},
+                 {"filme": "nao é endereço", "filme_de": "youtube", "musica": str(musica)},
+                 {"filme": str(pasta / "nao_existe.mp4"), "musica": str(musica)}):
+        try:
+            painel_edit.argumentos(ruim)
+            raise AssertionError(f"aceitou {ruim}")
+        except ValueError:
+            pass
+    baixados = []
+    original_baixar = youtube.baixar
+    youtube.baixar = lambda u, audio, destino, aviso=print, q=None: baixados.append((u, audio, q)) or Path("baixado.mp3")
+    try:
+        assert youtube.resolver(str(filme), False, None, {"pasta_dados": str(pasta)}) == filme and not baixados
+        assert youtube.resolver(url, True, "192", {"pasta_dados": str(pasta)}, aviso=lambda *a: None) == Path("baixado.mp3")
+        assert baixados == [(url, True, "192")], baixados
+    finally:
+        youtube.baixar = original_baixar
+    assert youtube._sufixo("1080", False) == "" and youtube._sufixo("720", False) == " [720p]"
+    assert youtube._sufixo("melhor", True) == "" and youtube._sufixo("128", True) == " [128k]"
+    print("ok  filme e música do computador ou do YouTube, com a qualidade do download")
+
     # plano longo usado mais de uma vez: cada uso pega outro pedaço, sem repetir imagem
     longo = {"id": 99, "inicio": 100.0, "fim": 112.0}
     repetidos = edit.montar_cortes([0, 1, 2, 3], 0, 0, [longo], 0.85)

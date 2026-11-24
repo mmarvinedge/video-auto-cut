@@ -12,7 +12,7 @@
   python -m cortes enquadrar <canal> <video.mp4>      escolhe na tela o recorte da cam e do conteúdo
   python -m cortes edit <filme> <musica>              edit de filme: gancho com fala + planos na batida
   python -m cortes edit-render <plano.json>           renderiza de novo um edit depois de mexer no plano
-  python -m cortes baixar-youtube <url> [--audio]     baixa um vídeo (ou só o áudio) do YouTube para um edit
+  python -m cortes baixar-youtube <url> [--audio] [--qualidade q]   baixa um vídeo (ou o áudio) do YouTube para um edit
 """
 import argparse
 import asyncio
@@ -25,8 +25,10 @@ from . import chat_twitch, config, detect, legendas, render, vod
 
 
 def cmd_edit(cfg, a):
-    from . import edit
-    filme, musica = Path(a.filme).resolve(), Path(a.musica).resolve()
+    from . import edit, youtube
+    # um endereço do YouTube no lugar do arquivo: baixa antes (ou reaproveita o já baixado)
+    filme = youtube.resolver(a.filme, False, a.qualidade_filme, cfg).resolve()
+    musica = youtube.resolver(a.musica, True, a.qualidade_musica, cfg).resolve()
     for arq in (filme, musica):
         if not arq.exists():
             raise SystemExit(f"Não achei {arq}")
@@ -61,7 +63,7 @@ def _edit_render(cfg, plano: Path, t0: float, prontos: bool) -> None:
 
 def cmd_baixar_youtube(cfg, a):
     from . import youtube
-    arq = youtube.baixar(youtube.validar(a.url), a.audio, youtube.pasta(cfg))
+    arq = youtube.baixar(youtube.validar(a.url), a.audio, youtube.pasta(cfg), q=a.qualidade)
     print(f"Arquivo: {arq}")      # o painel lê esta linha para preencher o campo do edit
 
 
@@ -425,7 +427,12 @@ def main():
     s = sub.add_parser("enquadrar"); s.add_argument("canal"); s.add_argument("video")
     s.add_argument("--porta", type=int, default=8810); s.set_defaults(f=cmd_enquadrar)
     s = sub.add_parser("edit", help="edit de filme: gancho com fala + planos cortados na batida da música")
-    s.add_argument("filme"); s.add_argument("musica")
+    s.add_argument("filme", help="arquivo do filme ou endereço do YouTube (é baixado antes)")
+    s.add_argument("musica", help="arquivo da música ou endereço do YouTube (só o áudio é baixado)")
+    s.add_argument("--qualidade-filme", choices=["1080", "720", "480", "melhor"],
+                   help="com o filme no YouTube: até quantas linhas baixar (padrão 1080)")
+    s.add_argument("--qualidade-musica", choices=["melhor", "192", "128"],
+                   help="com a música no YouTube: kbps do mp3 (padrão melhor)")
     s.add_argument("--tema", help='dica para a IA, ex.: "o romance do Peter e da Gwen"')
     s.add_argument("--trecho", help="só esta parte do filme, ex.: 1:20:00-1:42:00 (mais rápido e mais focado)")
     s.add_argument("--gancho", help="fala de gancho escolhida à mão, ex.: 1:23:10-1:23:19")
@@ -453,6 +460,7 @@ def main():
     s.set_defaults(f=cmd_edit)
     s = sub.add_parser("baixar-youtube", help="baixa um vídeo do YouTube para usar num edit")
     s.add_argument("url"); s.add_argument("--audio", action="store_true", help="só o áudio, em mp3 (para a música)")
+    s.add_argument("--qualidade", help="vídeo: 1080 (padrão), 720, 480 ou melhor; áudio: melhor (padrão), 192 ou 128")
     s.set_defaults(f=cmd_baixar_youtube)
     s = sub.add_parser("edit-render"); s.add_argument("plano")
     s.add_argument("--previa", action="store_true", help="prévia rápida em 540 px (previa.mp4), para conferir um ajuste")

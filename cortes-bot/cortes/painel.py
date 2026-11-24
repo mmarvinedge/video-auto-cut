@@ -722,14 +722,6 @@ def servir(dados: Path, porta: int = 8800, trabalhador: bool = True) -> None:
                                                      "pronto: o edit está na lista abaixo")
                     painel_edit.lembrar(dados, args[1], args[2])
                     self._json({"ok": True, "atual": atual})
-                elif caminho == "/api/youtube":
-                    from . import youtube
-                    url = youtube.validar(str(corpo.get("url") or ""))
-                    campo = "musica" if corpo.get("campo") == "musica" else "filme"
-                    self._json({"ok": True, "atual": trabalho.comecar_comando(
-                        f"YouTube: {url}", "baixando do YouTube",
-                        ["baixar-youtube", url] + (["--audio"] if campo == "musica" else []),
-                        "pronto: o arquivo já está no formulário", extra={"campo": campo})})
                 elif m := re.fullmatch(r"/api/edits/(.+)/(renderizar|prontos|texto|ajustar|desfazer|previa|corte)", caminho):
                     ident, acao = m.groups()
                     pasta = painel_edit.pasta_edit(dados, ident)

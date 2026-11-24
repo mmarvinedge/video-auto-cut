@@ -168,9 +168,10 @@ python -m cortes edit "D:/filmes/Filme.mkv" "D:/musicas/Musica.mp3" --tema "o ro
   "Renderizar de novo".
 - Entre os planos entram transições como as dos edits (zoom com borrão, flash, chicote, giro e fusão). Escolha em
   **Ajustes finos** ou com `--transicoes` (`nenhuma` volta ao corte seco). Dá para trocar uma por uma no `plano.json`.
-- O filme e a música são arquivos do seu computador. Se estiverem no YouTube, a faixa **Baixar do YouTube** da aba
-  Edits (ou `python -m cortes baixar-youtube <url> [--audio]`) baixa o vídeo em mp4 ou só o áudio em mp3 para
-  `dados/edits/_youtube/` e preenche o campo. Com o Deno instalado, o YouTube libera as qualidades mais altas.
+- O filme e a música podem ser arquivos do seu computador ou endereços do YouTube: em cada campo, escolha
+  **Do computador** ou **Do YouTube** e a qualidade do download (filme até 1080p, 720p, 480p ou a melhor; música em mp3
+  melhor, 192 ou 128 kbps). O edit baixa antes de começar, em `dados/edits/_youtube/`. Com o Deno instalado, o YouTube
+  libera as qualidades mais altas.
 - `--trecho 1:20:00-1:42:00` analisa só uma parte do filme (mais rápido, e a IA vê planos mais parecidos).
 - `--gancho 1:23:10-1:23:19` e `--drop 41.2` fixam à mão a fala e o ponto da música (já em slowed).
 - Sem `ANTHROPIC_API_KEY` (ou com `--sem-ia`), o gancho e os planos são escolhidos por heurística, bem pior.

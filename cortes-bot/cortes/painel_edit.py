@@ -24,10 +24,15 @@ def _lembradas(dados: Path) -> Path:
 
 
 def lembrar(dados: Path, filme: str, musica: str) -> None:
+    """A pasta do filme e a da música, para o seletor abrir nelas da próxima vez (endereço do
+    YouTube não tem pasta: fica a de antes)."""
+    from . import youtube
     arq = _lembradas(dados)
     arq.parent.mkdir(parents=True, exist_ok=True)
-    arq.write_text(json.dumps({"video": str(Path(filme).parent), "audio": str(Path(musica).parent)},
-                              ensure_ascii=False), encoding="utf-8")
+    antes = json.loads(arq.read_text(encoding="utf-8")) if arq.exists() else {}
+    novas = {"video": None if youtube.eh_url(filme) else str(Path(filme).parent),
+             "audio": None if youtube.eh_url(musica) else str(Path(musica).parent)}
+    arq.write_text(json.dumps({k: v or antes.get(k) for k, v in novas.items()}, ensure_ascii=False), encoding="utf-8")
 
 
 def _atalhos(dados: Path) -> list[dict]:
@@ -98,17 +103,9 @@ def _intervalo(corpo: dict, chave: str, nome: str) -> str | None:
 def argumentos(corpo: dict) -> tuple[list[str], str]:
     """Pedido do formulário -> argumentos do `python -m cortes edit`. Tudo vai como `--opcao=valor`:
     um tema começando com "-" não vira opção por engano."""
-    filme = Path(str(corpo.get("filme") or "").strip().strip('"'))
-    musica = Path(str(corpo.get("musica") or "").strip().strip('"'))
-    if not filme.is_file():
-        raise ValueError("escolha o arquivo do filme")
-    if filme.suffix.lower() not in VIDEO:
-        raise ValueError(f"o filme precisa ser um vídeo ({', '.join(sorted(VIDEO))})")
-    if not musica.is_file():
-        raise ValueError("escolha o arquivo da música")
-    if musica.suffix.lower() not in AUDIO | VIDEO:
-        raise ValueError(f"a música precisa ser um áudio ({', '.join(sorted(AUDIO))})")
-    args = ["edit", str(filme), str(musica)]
+    filme, extra_f, nome_f = _fonte(corpo, "filme")
+    musica, extra_m, nome_m = _fonte(corpo, "musica")
+    args = ["edit", filme, musica] + extra_f + extra_m
     if tema := str(corpo.get("tema") or "").strip()[:300]:
         args.append(f"--tema={tema}")
     if trecho := _intervalo(corpo, "trecho", "Trecho do filme"):
@@ -155,7 +152,28 @@ def argumentos(corpo: dict) -> tuple[list[str], str]:
     for chave, opcao in (("sem_ia", "--sem-ia"), ("so_planejar", "--so-planejar"), ("prontos", "--prontos")):
         if corpo.get(chave):
             args.append(opcao)
-    return args, f"Edit: {filme.stem} + {musica.stem}"
+    return args, f"Edit: {nome_f} + {nome_m}"
+
+
+def _fonte(corpo: dict, campo: str) -> tuple[str, list[str], str]:
+    """O filme (ou a música) do formulário: um arquivo do computador ou um endereço do YouTube,
+    com a qualidade do download. Devolve (argumento, opções extras, nome para o título)."""
+    from . import youtube
+    audio = campo == "musica"
+    nome = "música" if audio else "filme"
+    valor = str(corpo.get(campo) or "").strip().strip('"')
+    if youtube.eh_url(valor) or corpo.get(f"{campo}_de") == "youtube":
+        url = youtube.validar(valor)
+        q = youtube.qualidade(corpo.get(f"{campo}_qualidade"), audio)
+        return url, [f"--qualidade-{campo}={q}"], f"YouTube ({nome})"
+    arq = Path(valor)
+    if not arq.is_file():
+        raise ValueError(f"escolha o arquivo d{'a' if audio else 'o'} {nome}, ou cole o endereço do YouTube")
+    tipos = AUDIO | VIDEO if audio else VIDEO
+    if arq.suffix.lower() not in tipos:
+        raise ValueError(f"{'a música precisa ser um áudio' if audio else 'o filme precisa ser um vídeo'} "
+                         f"({', '.join(sorted(AUDIO if audio else VIDEO))})")
+    return str(arq), [], arq.stem
 
 
 # ------------------------------------------------------------------ edits feitos

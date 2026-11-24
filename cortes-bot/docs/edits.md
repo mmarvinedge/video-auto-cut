@@ -14,9 +14,11 @@ Dá para usar de dois jeitos: pela aba **Edits** do painel ou pelo comando
 
 ## Pelo painel (aba Edits)
 
-1. **Filme** e **Música**: cole o caminho ou clique em **Procurar…**. O seletor navega pelas pastas do computador,
-   mostra só vídeos (filme) ou áudios e vídeos (música) e lembra a última pasta usada. Se o arquivo está no YouTube,
-   use antes a faixa **Baixar do YouTube** (veja abaixo).
+1. **Filme** e **Música**, cada um **do computador** ou **do YouTube**:
+   - do computador: cole o caminho ou clique em **Procurar…**. O seletor navega pelas pastas, mostra só vídeos
+     (filme) ou áudios e vídeos (música) e lembra a última pasta usada;
+   - do YouTube: cole o endereço e escolha a qualidade do download (veja abaixo). O edit baixa antes de começar, no
+     mesmo trabalho.
 2. **Tema** (opcional): o pedido para a IA, como "o romance do Peter e da Gwen". Além do clima, a IA lê nele:
    - a **duração** ("edit de 1 minuto");
    - um **gancho longo** ("o gancho é a conversa antes do estalo", até `gancho_longo` = 40 s);
@@ -100,16 +102,22 @@ O edit roda num processo filho do painel e só usa a IA se a `ANTHROPIC_API_KEY`
 Como ele sobe sozinho com o Windows, grave a chave como variável de usuário (`setx ANTHROPIC_API_KEY "..."`) e rode
 `iniciar_painel.pyw --reiniciar`. Sem a chave, o formulário mostra um aviso.
 
-### Baixar do YouTube
+### Filme e música do YouTube
 
-A faixa no topo do formulário recebe o endereço de um vídeo (`youtube.com/watch?v=`, `youtu.be/`, `/shorts/`,
-`/live/` ou `music.youtube.com`) e o destino: **como Filme** baixa o vídeo até 1080p em mp4; **como Música** baixa só
-o áudio, em mp3. Ao terminar, o caminho do arquivo entra sozinho no campo escolhido.
+Em "Do YouTube", o campo recebe o endereço de um vídeo (`youtube.com/watch?v=`, `youtu.be/`, `/shorts/`, `/live/` ou
+`music.youtube.com`) e a qualidade:
 
-- Roda como um trabalho do painel (`python -m cortes baixar-youtube <url> [--audio]`): um por vez, com barra de
-  progresso e log.
-- Os arquivos ficam em `dados/edits/_youtube/`, como `<título> [<id>].mp4|mp3`. O seletor tem o atalho **Baixados do
-  YouTube**. Baixar de novo o mesmo vídeo reaproveita o arquivo, porque ele é reconhecido pelo id.
+- **Filme**: 1080p (padrão), 720p, 480p ou "melhor que houver", em mp4. Até 1080p o download prefere H.264 + AAC
+  na mesma resolução (AV1/Opus dentro de mp4 não abre em vários players do Windows); "melhor" pega a maior
+  resolução, que acima de 1080p costuma ser só VP9/AV1.
+- **Música**: só o áudio, em mp3 "melhor" (VBR máximo, padrão), 192 ou 128 kbps.
+
+O painel manda o endereço no lugar do arquivo (`edit <url> <url> --qualidade-filme 720 --qualidade-musica 192`), e
+o comando baixa antes de analisar (`youtube.resolver`), com o andamento na mesma barra. Os detalhes:
+
+- Os arquivos ficam em `dados/edits/_youtube/`, como `<título> [<id>].mp4|mp3`, com a qualidade no nome quando não
+  é a padrão (`[720p]`, `[melhor]`, `[192k]`). Pedir de novo o mesmo vídeo na mesma qualidade reaproveita o
+  arquivo. O seletor de arquivos tem o atalho **Baixados do YouTube**.
 - Playlists são recusadas: só um vídeo por vez.
 - O YouTube passou a exigir um interpretador de JavaScript para liberar todos os formatos. Com o **Deno** (ou o Node)
   no PATH, o yt-dlp usa sozinho. Sem ele, o download funciona, mas pode vir numa qualidade menor, e o log avisa.
@@ -138,9 +146,11 @@ o áudio, em mp3. Ao terminar, o caminho do arquivo entra sozinho no campo escol
 
 `python -m cortes edit-render <plano.json> [--prontos] [--previa]` renderiza de novo um plano existente (`--previa`: em 540 px e rápido, em `previa.mp4`).
 
-`python -m cortes baixar-youtube <url> [--audio]` baixa do YouTube (código em `cortes/youtube.py`) e termina com a
-linha `Arquivo: <caminho>`. O `trabalho.comecar_comando` guarda essa linha em `resultado`, e é assim que o painel
-preenche o campo.
+`python -m cortes edit <filme> <musica>` aceita um endereço do YouTube no lugar de cada arquivo, com
+`--qualidade-filme 1080|720|480|melhor` e `--qualidade-musica melhor|192|128`.
+
+`python -m cortes baixar-youtube <url> [--audio] [--qualidade q]` só baixa (código em `cortes/youtube.py`) e termina
+com a linha `Arquivo: <caminho>`, que o `trabalho.comecar_comando` guarda em `resultado`.
 
 ## Arquitetura em duas etapas
 
@@ -332,7 +342,7 @@ Como funciona:
 ## Pastas
 
 ```
-dados/edits/_youtube/               o que foi baixado do YouTube (<título> [<id>].mp4|mp3)
+dados/edits/_youtube/               o que foi baixado do YouTube (<título> [<id>][ [qualidade]].mp4|mp3)
 dados/edits/<filme>/
 ├── tarja_<ini>_<fim>.json          área sem as faixas pretas ([] = sem tarja)
 ├── planos_<ini>_<fim>.json         planos do filme (com brilho), em cache
