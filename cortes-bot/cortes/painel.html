@@ -420,6 +420,7 @@ $("#pr-fechar").addEventListener("click", () => $("#dlg-prompt").close());
 $("#pr-aplicar").addEventListener("click", async () => {
   if (!promptAlvo) return;
   const campos = lerResposta($("#pr-resposta").value);
+  campos.hashtags = hashtagsFinais(campos.hashtags);
   if (!campos.titulo) {
     $("#pr-msg").textContent = "não achei uma linha começando com 'Título:' na resposta.";
     return;
@@ -432,6 +433,16 @@ $("#pr-aplicar").addEventListener("click", async () => {
   $(".conta-letras", el).textContent = `${campos.titulo.length}/100`;
   $("#dlg-prompt").close();
 });
+
+// a mesma regra do ia.hashtags_finais: o chat de fora pode esquecer as fixas ou mandar demais
+function hashtagsFinais(lista) {
+  const saida = [...(E.hashtags_fixas || [])];
+  for (const h of lista) {
+    const t = String(h).replace(/^#+/, "").replace(/\s+/g, "").toLowerCase();
+    if (t && !saida.includes(t)) saida.push(t);
+  }
+  return saida.slice(0, E.max_hashtags || 5);
+}
 
 function camposDoCard(el) {
   return { titulo: $(".titulo", el).value.trim(), descricao: $(".descricao", el).value, hashtags: tags($(".hashtags", el).value) };

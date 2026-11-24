@@ -437,6 +437,7 @@ def estado() -> dict:
         "plataformas": {k: v["nome"] for k, v in contas.PLATAFORMAS.items()},
         "duracao_max": {k: v["duracao_max"] for k, v in contas.PLATAFORMAS.items()},
         "ia_disponivel": ia.credenciais_disponiveis(),
+        "hashtags_fixas": list(ia.HASHTAGS_FIXAS), "max_hashtags": ia.MAX_HASHTAGS,
         "youtube_configurado": pub_youtube.configurado(cfg),
         "youtube_credencial": cfg["publicacao"]["youtube"]["client_secret"],
         "tiktok_configurado": pub_tiktok.configurado(cfg),

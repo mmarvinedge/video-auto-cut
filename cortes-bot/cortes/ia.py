@@ -14,6 +14,27 @@ from pydantic import BaseModel, Field
 
 MODELO = "claude-opus-5-5"
 
+# Toda legenda leva estas, nesta ordem, e mais as tiradas do que acontece no corte.
+HASHTAGS_FIXAS = ("fyp", "gta6")
+MAX_HASHTAGS = 5
+_REGRA_HASHTAGS = (f"exatamente {MAX_HASHTAGS - len(HASHTAGS_FIXAS)}, minúsculas, sem o símbolo # e sem espaço "
+                   "dentro de cada uma, tiradas do que acontece no corte (o que o streamer fez, a situação, "
+                   "o lugar, quem estava junto) ou do próprio streamer. Só hashtag que alguém realmente "
+                   "buscaria ou segue, nada inventado na hora. Não repita "
+                   + " nem ".join("#" + h for h in HASHTAGS_FIXAS)
+                   + ": essas entram sempre, sozinhas, antes das suas")
+
+
+def hashtags_finais(geradas) -> list[str]:
+    """As fixas primeiro e depois as do contexto, sem repetir, até MAX_HASHTAGS."""
+    saida = list(HASHTAGS_FIXAS)
+    for h in geradas or []:
+        h = str(h).strip().lstrip("#").replace(" ", "").lower()
+        if h and h not in saida:
+            saida.append(h)
+    return saida[:MAX_HASHTAGS]
+
+
 SISTEMA = """Você é editor de um canal de cortes que publica no YouTube Shorts, Instagram Reels e TikTok.
 O canal é dedicado a um único streamer brasileiro e publica trechos verticais das lives dele.
 
@@ -37,13 +58,13 @@ Para CADA candidato, decida:
 - titulo: em português do Brasil, até 70 caracteres, chamativo mas fiel ao que acontece (sem mentir,
   sem clickbait enganoso), no tom dos títulos de cortes brasileiros. Não use o nome do canal.
 - descricao: 1 ou 2 frases contando o contexto.
-- hashtags: 3 a 5, sem o símbolo #, minúsculas, sem espaço.
+- hashtags: {regra_hashtags}.
 - motivo: uma frase explicando a decisão (útil para o editor humano revisar).
 
 Depois, monte até {max_comp} COMPILAÇÕES para o TikTok usando só candidatos CURTOS que você aprovou:
 cada uma com 2 a 4 cortes que combinem entre si (mesmo tema, mesma situação ou uma progressão,
 ex.: "todas as mortes", "os bugs da live", "a saga do carro"), somando entre {longo_min} e {longo_max}
-segundos já descontado o que você aparou. Liste os ids na ordem em que devem aparecer. Cada corte
+segundos já descontado o que você aparou. As hashtags da compilação seguem a mesma regra. Liste os ids na ordem em que devem aparecer. Cada corte
 curto pode estar em no máximo uma compilação. Se não houver tema que una os cortes de forma natural,
 devolva a lista vazia: uma compilação forçada é pior que nenhuma.
 
@@ -118,7 +139,7 @@ def avaliar(curtos: list[dict], longos: list[dict], canal: dict, cfg: dict) -> t
     tk, ct = cfg["tiktok"], cfg["corte"]
     sistema = SISTEMA.format(curto_min=ct["duracao_min"], curto_max=ct["duracao_max"],
                              longo_min=tk["duracao_min"], longo_max=tk["duracao_max"],
-                             max_comp=tk["max_compilacoes_por_live"])
+                             max_comp=tk["max_compilacoes_por_live"], regra_hashtags=_REGRA_HASHTAGS)
     hint = (cfg.get("ia") or {}).get("contexto", "")
     pedido = (
         f"Canal: {canal.get('canal_destino', '')} (streamer: {canal.get('login', '')}).{(' ' + hint) if hint else ''}\n\n"
@@ -153,6 +174,7 @@ def aplicar(cands: list[dict], avaliacoes: dict[str, Avaliacao], duracao_min: fl
         if a is None:
             continue
         c["ia"] = a.model_dump()
+        c["ia"]["hashtags"] = hashtags_finais(a.hashtags)
         ini, fim = c["inicio"] + a.aparar_inicio, c["fim"] - a.aparar_fim
         if fim - ini >= duracao_min:
             c["inicio"], c["fim"] = round(ini, 2), round(fim, 2)
@@ -177,7 +199,7 @@ def montar_compilacoes(curtos: list[dict], compilacoes: list[Compilacao], cfg: d
         usados.update(p["id"] for p in partes)
         saida.append({
             "partes": [p["id"] for p in partes], "inicio": partes[0]["inicio"], "duracao": round(total, 1),
-            "ia": {"titulo": comp.titulo, "descricao": comp.descricao, "hashtags": comp.hashtags, "motivo": comp.motivo},
+            "ia": {"titulo": comp.titulo, "descricao": comp.descricao, "hashtags": hashtags_finais(comp.hashtags), "motivo": comp.motivo},
         })
         if len(saida) >= tk["max_compilacoes_por_live"]:
             break
@@ -196,13 +218,10 @@ LEGENDA = """Você escreve a legenda de um corte vertical de live para TikTok, S
   espectador pra dentro — completa o título com o que ele ainda não sabe, dá o contexto que faz
   a cena ter graça, ou provoca uma reação ("quem nunca?", "e ainda culpou o amigo"). Nunca
   repete o título com outras palavras. Pode terminar com uma pergunta curta se couber natural.
-- hashtags: 4 a 6, minúsculas, sem o símbolo # e sem espaço dentro de cada uma. Misture: uma ou
-  duas bem amplas, que muita gente segue (o jogo, o tipo de conteúdo), e duas ou três específicas
-  do que aconteceu no corte ou do streamer. Só hashtag que alguém realmente buscaria ou segue —
-  nada inventado na hora, e nada de #fyp, #viral ou #foryou, que não entregam alcance nenhum.
+- hashtags: {regra_hashtags}.
 
 Você recebe a transcrição do trecho. Se ela não disser nada de interessante, diga isso no título
-em vez de inventar: é melhor o editor saber que o corte é fraco."""
+em vez de inventar: é melhor o editor saber que o corte é fraco.""".format(regra_hashtags=_REGRA_HASHTAGS)
 
 
 class Legenda(BaseModel):
@@ -227,10 +246,12 @@ def prompt_avulso(c: dict, canal: dict, cfg: dict) -> str:
     de copiar em cima de bloco de código, e no celular isso é um toque em vez de arrastar o
     dedo para selecionar. Pede as hashtags já com # para o texto sair pronto para colar.
     Texto simples e não JSON, que fica legível na tela do chat."""
+    fixas = " ".join("#" + h for h in HASHTAGS_FIXAS)
     return (f"{LEGENDA}\n\n"
             f"Responda com UM bloco de código, e nada fora dele — nem introdução, nem comentário.\n"
             f"Dentro do bloco, exatamente estas três linhas:\n\n"
-            f"```\nTítulo: ...\nDescrição: ...\nHashtags: #assim #com #cerquilha\n```\n\n"
+            f"```\nTítulo: ...\nDescrição: ...\nHashtags: {fixas} #tag1 #tag2 #tag3\n```\n\n"
+            f"A linha das hashtags começa sempre por {fixas}, e depois vêm as suas 3, todas com #.\n\n"
             f"---\n\n{pedido_legenda(c, canal, cfg)}")
 
 
@@ -254,4 +275,4 @@ def legenda_para(c: dict, canal: dict, cfg: dict) -> dict:
         raise RuntimeError(f"resposta incompleta da IA (stop_reason={resp.stop_reason})")
     r = resp.parsed_output
     return {"titulo": r.titulo[:100], "descricao": r.descricao,
-            "hashtags": [h.strip().lstrip("#") for h in r.hashtags if h.strip()][:10]}
+            "hashtags": hashtags_finais(r.hashtags)}
