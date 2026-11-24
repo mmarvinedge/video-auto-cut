@@ -12,6 +12,7 @@
     <h1>Cortes<span class="sub">Vice City</span></h1>
     <nav aria-label="Seções">
       <a href="#lives" data-aba="lives">Lives</a>
+      <a href="#edits" data-aba="edits">Edits</a>
       <a href="#revisao" data-aba="revisao">Revisão</a>
       <a href="#fila" data-aba="fila">Fila</a>
       <a href="#contas" data-aba="contas">Contas</a>
@@ -71,6 +72,104 @@
       </div>
       <div id="lv-trabalho"></div>
       <div id="lv-lista"><p class="vazio">Escolha o streamer e clique em Buscar VODs.</p></div>
+    </div>
+  </section>
+  <section id="aba-edits" hidden>
+    <div class="escolha">
+      <form class="secao form-edit" id="ed-form" novalidate>
+        <h2>Novo edit de filme</h2>
+        <p>Uma fala marcante do filme abre o vídeo com a legenda neon. Depois a música entra e os planos trocam na batida.
+          O filme e a música são arquivos do seu computador. Se estiverem no YouTube, baixe primeiro aqui embaixo.</p>
+        <div class="youtube">
+          <span class="rotulo">Baixar do YouTube</span>
+          <span class="arquivo">
+            <input id="ed-yt-url" type="url" placeholder="https://www.youtube.com/watch?v=..." aria-label="Endereço do vídeo no YouTube" autocomplete="off">
+            <select id="ed-yt-campo" aria-label="Usar o arquivo baixado como">
+              <option value="filme">como Filme (vídeo)</option>
+              <option value="musica">como Música (só o áudio)</option>
+            </select>
+            <button type="button" id="ed-yt-baixar">Baixar</button>
+          </span>
+          <span class="motivo" id="ed-yt-recado" aria-live="polite"></span>
+        </div>
+        <div class="campos">
+          <label class="campo"><span class="rotulo">Filme</span>
+            <span class="arquivo"><input id="ed-filme" placeholder="D:\Filmes\Filme.mkv" autocomplete="off">
+              <button type="button" data-procurar="video" data-alvo="ed-filme">Procurar…</button></span></label>
+          <label class="campo"><span class="rotulo">Música</span>
+            <span class="arquivo"><input id="ed-musica" placeholder="D:\Músicas\Musica.mp3" autocomplete="off">
+              <button type="button" data-procurar="audio" data-alvo="ed-musica">Procurar…</button></span></label>
+          <label class="campo largo"><span class="rotulo">Tema <span class="motivo">(opcional: uma dica para a IA)</span></span>
+            <input id="ed-tema" maxlength="300" placeholder="o romance do Peter e da Gwen"></label>
+          <div class="campo"><span class="rotulo">Trecho do filme <span class="motivo">(opcional: só essa parte, mais rápido e coerente)</span></span>
+            <span class="intervalo"><input id="ed-trecho-inicio" placeholder="1:10:00" aria-label="Início do trecho do filme">
+              <span>até</span><input id="ed-trecho-fim" placeholder="1:40:00" aria-label="Fim do trecho do filme"></span></div>
+          <label class="campo"><span class="rotulo">Idioma da fala <span class="motivo">(para achar o gancho)</span></span>
+            <select id="ed-idioma"><option value="">Padrão do config</option>
+              <option value="pt">Português (dublado)</option><option value="en">Inglês</option>
+              <option value="es">Espanhol</option><option value="auto">Detectar sozinho</option></select></label>
+        </div>
+        <details class="ajustes">
+          <summary>Ajustes finos</summary>
+          <div class="campos">
+            <label class="campo"><span class="rotulo">Formato</span>
+              <select id="ed-proporcao"><option value="">Padrão do config</option>
+                <option value="4:5">4:5 com tarjas pretas</option><option value="9:16">9:16 tela cheia</option></select></label>
+            <label class="campo"><span class="rotulo">Música</span>
+              <select id="ed-slowed"><option value="">Padrão do config</option><option value="1">Original</option>
+                <option value="0.9">Um pouco mais lenta (0,9×)</option><option value="0.85">Slowed (0,85×)</option>
+                <option value="0.8">Bem lenta (0,8×)</option></select></label>
+            <label class="campo"><span class="rotulo">Transições</span>
+              <select id="ed-transicoes"><option value="">Padrão do config</option>
+                <option value="variadas">Variadas (zoom, flash, chicote, giro, fusão)</option>
+                <option value="zoom,flash">Só zoom e flash</option><option value="zoom">Só zoom</option>
+                <option value="nenhuma">Nenhuma (corte seco)</option></select></label>
+            <label class="campo"><span class="rotulo">Ritmo dos cortes</span>
+              <select id="ed-ritmo"><option value="">Pelo tema (ou o config)</option>
+                <option value="rapido">Rápido: um corte por batida</option><option value="normal">Normal</option>
+                <option value="lento">Lento: planos longos</option></select></label>
+            <label class="campo"><span class="rotulo">Abertura antes do gancho</span>
+              <select id="ed-abertura"><option value="">Pelo tema (ou o config)</option>
+                <option value="nao">Sem abertura</option>
+                <option value="sim">Falas do filme antes do gancho</option></select></label>
+            <label class="campo"><span class="rotulo">Volume da música <span class="motivo">(depois do drop)</span></span>
+              <select id="ed-volume-musica"><option value="">Padrão do config</option>
+                <option value="1.3">Mais alta</option><option value="1">Normal</option>
+                <option value="0.7">Mais baixa</option><option value="0.5">Bem baixa</option></select></label>
+            <label class="campo"><span class="rotulo">Música antes do drop</span>
+              <select id="ed-musica-gancho"><option value="">Padrão do config</option>
+                <option value="sim">Baixinha debaixo da fala</option>
+                <option value="nao">Muda: entra só no drop</option></select></label>
+            <label class="campo"><span class="rotulo">Parte da música (segundos)</span>
+              <input id="ed-duracao" type="number" min="5" max="60" step="1"></label>
+            <label class="campo"><span class="rotulo">Drop <span class="motivo">(segundo da música já lenta)</span></span>
+              <input id="ed-drop" placeholder="automático"></label>
+            <label class="campo"><span class="rotulo">Drop no filme <span class="motivo">(o momento que cai no drop, ex.: o estalo)</span></span>
+              <input id="ed-drop-filme" placeholder="pelo tema, ou 3:56"></label>
+            <label class="campo"><span class="rotulo">Drop e a fala do gatilho <span class="motivo">(ex.: "A mim, meus X-Men")</span></span>
+              <select id="ed-drop-fala"><option value="">Padrão do config</option>
+                <option value="depois">Depois da fala: ela limpa, o drop quando acaba</option>
+                <option value="durante">Durante a fala: drop junto, música mais baixa</option></select></label>
+            <label class="campo"><span class="rotulo">Fala do gatilho termina em <span class="motivo">(com o drop no filme; em branco, pelo tema)</span></span>
+              <input id="ed-fala-drop" placeholder="pelo tema, ou 3:58"></label>
+            <div class="campo largo"><span class="rotulo">Gancho escolhido à mão <span class="motivo">(tempo no filme; em branco, a IA escolhe)</span></span>
+              <span class="intervalo"><input id="ed-gancho-inicio" placeholder="1:23:10" aria-label="Início do gancho">
+                <span>até</span><input id="ed-gancho-fim" placeholder="1:23:19" aria-label="Fim do gancho"></span></div>
+          </div>
+        </details>
+        <div class="opcoes" role="group" aria-label="Opções do edit">
+          <label><input type="checkbox" id="ed-sem-ia"> sem IA</label>
+          <label><input type="checkbox" id="ed-so-planejar"> só planejar (sem renderizar)</label>
+          <label><input type="checkbox" id="ed-prontos"> copiar para a pasta de prontos</label>
+        </div>
+        <p class="aviso" id="ed-sem-chave" hidden>Sem a ANTHROPIC_API_KEY, o gancho e os planos são escolhidos por regras simples, e o resultado fica bem pior.</p>
+        <div class="linha">
+          <button class="primario" type="submit">Criar edit</button>
+          <span class="motivo" id="ed-recado" aria-live="polite"></span>
+        </div>
+      </form>
+      <div id="ed-trabalho"></div>
+      <div class="grade" id="ed-lista"></div>
     </div>
   </section>
   <section id="aba-revisao"><div class="grade" id="lista"><p class="vazio">Carregando…</p></div></section>
@@ -141,6 +240,119 @@
   </form>
 </dialog>
 
+<dialog id="dlg-aj" aria-labelledby="aj-titulo">
+  <div class="dlg aj">
+    <div class="linha"><h2 id="aj-titulo">Ajustar o edit</h2>
+      <span class="motivo" id="aj-nome"></span>
+      <button type="button" id="aj-fechar">Fechar</button></div>
+    <div class="aj-abas" role="tablist">
+      <button type="button" role="tab" id="aj-aba-drop" aria-selected="true" aria-controls="aj-painel-drop">Drop e gancho</button>
+      <button type="button" role="tab" id="aj-aba-cortes" aria-selected="false" aria-controls="aj-painel-cortes">Cortes</button>
+      <button type="button" role="tab" id="aj-aba-geral" aria-selected="false" aria-controls="aj-painel-geral">Geral</button>
+    </div>
+    <div id="aj-painel-drop" role="tabpanel" aria-labelledby="aj-aba-drop" class="aj-painel">
+    <div class="aj-corpo">
+      <div class="aj-filme">
+        <img id="aj-quadro" alt="Quadro do filme no tempo escolhido, no recorte do edit">
+        <input type="range" id="aj-barra" min="0" max="1" step="0.01" aria-label="Posição no filme">
+        <div class="aj-nav">
+          <button type="button" data-passo="-1" title="Voltar 1 segundo (Shift+←)">−1s</button>
+          <button type="button" data-passo="-q" title="Voltar 1 quadro (←)">−1 quadro</button>
+          <input id="aj-tempo" aria-label="Tempo no filme (h:mm:ss.ss)" autocomplete="off">
+          <button type="button" data-passo="+q" title="Avançar 1 quadro (→)">+1 quadro</button>
+          <button type="button" data-passo="1" title="Avançar 1 segundo (Shift+→)">+1s</button>
+        </div>
+      </div>
+      <div class="aj-lado">
+        <div class="aj-marcas" id="aj-marcas">
+          <div class="aj-marca" data-campo="gancho_ini"><span class="rotulo">Gancho começa</span><span class="valor"></span>
+            <button type="button" class="aqui">Marcar aqui</button><button type="button" class="ver">Ver</button></div>
+          <div class="aj-marca" data-campo="gancho_fim"><span class="rotulo">Gancho termina</span><span class="valor"></span>
+            <button type="button" class="aqui">Marcar aqui</button><button type="button" class="ver">Ver</button></div>
+          <div class="aj-marca" data-campo="drop_filme"><span class="rotulo">Drop no filme <span class="motivo">(o gatilho)</span></span><span class="valor"></span>
+            <button type="button" class="aqui">Marcar aqui</button><button type="button" class="ver">Ver</button>
+            <button type="button" class="limpar" aria-label="Tirar o momento do drop">×</button></div>
+          <div class="aj-marca" data-campo="fala_fim"><span class="rotulo">Fala do gatilho termina <span class="motivo">(se houver)</span></span><span class="valor"></span>
+            <button type="button" class="aqui">Marcar aqui</button><button type="button" class="ver">Ver</button>
+            <button type="button" class="limpar" aria-label="Sem fala do gatilho">×</button></div>
+          <label class="aj-modo"><span class="rotulo">Com fala no gatilho, o drop entra</span>
+            <select id="aj-modo"><option value="depois">depois da fala (ela limpa)</option>
+              <option value="durante">durante a fala (música mais baixa)</option></select></label>
+          <label class="aj-sem"><input type="checkbox" id="aj-sem-gancho"> sem gancho (abre direto no drop)</label>
+        </div>
+        <div class="aj-falas" id="aj-falas" aria-label="Falas perto deste momento"></div>
+      </div>
+    </div>
+    <div class="aj-musica">
+      <div class="linha"><span class="rotulo">Música</span><span id="aj-drop-mus" class="motivo"></span>
+        <button type="button" id="aj-drop-auto">Drop automático</button>
+        <button type="button" id="aj-ouvir">Ouvir o drop</button>
+        <label class="aj-volume"><span class="rotulo">Volume da música</span>
+          <input type="range" id="aj-volume" min="0.3" max="1.5" step="0.05" value="1" aria-describedby="aj-volume-txt">
+          <output id="aj-volume-txt" for="aj-volume">100%</output></label></div>
+      <canvas id="aj-onda-toda" height="34" aria-label="A música inteira: clique para escolher a batida do drop"></canvas>
+      <canvas id="aj-onda" height="80" aria-label="Perto do drop: clique para escolher a batida"></canvas>
+      <audio id="aj-audio" preload="none"></audio>
+    </div>
+    </div>
+    <div id="aj-painel-geral" role="tabpanel" aria-labelledby="aj-aba-geral" class="aj-painel" hidden>
+      <p class="motivo">Estes ajustes montam os cortes de novo com os planos que a IA já escolheu, sem chamar a IA. O
+        drop e o gancho continuam os da outra aba.</p>
+      <div class="aj-geral">
+        <label class="campo"><span class="rotulo">Ritmo dos cortes</span>
+          <select id="aj-ritmo"><option value="rapido">Rápido: um corte por batida</option>
+            <option value="normal">Normal</option><option value="lento">Lento: planos longos</option></select></label>
+        <label class="campo"><span class="rotulo">Parte da música (segundos)</span>
+          <input id="aj-duracao" type="number" min="5" max="60" step="1"></label>
+        <label class="campo"><span class="rotulo">Transições</span>
+          <select id="aj-transicoes"><option value="variadas">Variadas (zoom, flash, chicote, giro, fusão)</option>
+            <option value="zoom,flash">Só zoom e flash</option><option value="zoom">Só zoom</option>
+            <option value="nenhuma">Nenhuma (corte seco)</option></select></label>
+        <label class="campo"><span class="rotulo">Abertura antes do gancho</span>
+          <select id="aj-abertura"><option value="nao">Sem abertura</option>
+            <option value="sim">Falas do filme antes do gancho</option></select></label>
+        <label class="campo"><span class="rotulo">Música antes do drop</span>
+          <select id="aj-musica-gancho"><option value="sim">Baixinha debaixo da fala</option>
+            <option value="nao">Muda: entra só no drop</option></select></label>
+      </div>
+      <p class="motivo" id="aj-geral-info"></p>
+    </div>
+    <div id="aj-painel-cortes" role="tabpanel" aria-labelledby="aj-aba-cortes" class="aj-painel" hidden>
+      <p class="motivo">Cada mudança grava na hora; gere a prévia para conferir. Ajustar o drop e o gancho monta os
+        cortes de novo: edite os cortes por último.</p>
+      <ol class="aj-cortes" id="aj-cortes"></ol>
+      <div class="aj-escolha" id="aj-escolha" hidden>
+        <div class="linha"><span class="rotulo" id="aj-escolha-titulo">Trocar o plano</span>
+          <button type="button" id="aj-escolha-fechar">Cancelar</button></div>
+        <div class="aj-grade" id="aj-grade"></div>
+      </div>
+    </div>
+    <div class="rodape">
+      <span class="msg" id="aj-msg" aria-live="polite"></span>
+      <button type="button" id="aj-desfazer">Desfazer o último ajuste</button>
+      <button type="button" id="aj-aplicar" class="primario">Aplicar e gerar prévia</button>
+      <button type="button" id="aj-gerar-previa" class="primario" hidden>Gerar prévia</button>
+      <button type="button" id="aj-final">Renderizar final</button>
+    </div>
+    <video id="aj-previa" controls playsinline hidden></video>
+  </div>
+</dialog>
+
+<dialog id="dlg-arq" aria-labelledby="arq-titulo">
+  <div class="dlg">
+    <h2 id="arq-titulo">Escolher arquivo</h2>
+    <div class="atalhos" id="arq-atalhos"></div>
+    <form class="linha" id="arq-ir">
+      <button type="button" id="arq-subir" aria-label="Pasta de cima">↑</button>
+      <input id="arq-pasta" aria-label="Pasta" autocomplete="off">
+      <button type="submit">Abrir</button>
+    </form>
+    <ul class="arq-lista" id="arq-lista"></ul>
+    <div class="msg" id="arq-msg" aria-live="polite"></div>
+    <div class="rodape"><button type="button" id="arq-fechar">Cancelar</button></div>
+  </div>
+</dialog>
+
 <dialog id="dlg-enq" aria-labelledby="enq-titulo">
   <div class="dlg enq">
     <div class="linha"><h2 id="enq-titulo">Enquadramento</h2>
@@ -197,17 +409,18 @@ function falhaPainel(msg) {
 // ---------------------------------------------------------------- abas
 function abaAtual() { return (location.hash.slice(1) || "revisao").split("?")[0]; }
 async function mostrarAba() {
-  const aba = ["lives", "revisao", "fila", "contas"].includes(abaAtual()) ? abaAtual() : "revisao";
+  const aba = ["lives", "edits", "revisao", "fila", "contas"].includes(abaAtual()) ? abaAtual() : "revisao";
   document.querySelectorAll("nav a").forEach(a => {
     if (a.dataset.aba === aba) a.setAttribute("aria-current", "page"); else a.removeAttribute("aria-current");
   });
-  for (const n of ["lives", "revisao", "fila", "contas"]) $(`#aba-${n}`).hidden = n !== aba;
+  for (const n of ["lives", "edits", "revisao", "fila", "contas"]) $(`#aba-${n}`).hidden = n !== aba;
   $("#barra-revisao").hidden = aba !== "revisao";
   E = await api("/api/estado");
   if (aba === "revisao") await carregarCortes();
   if (aba === "fila") await desenharFila();
   if (aba === "contas") desenharContas();
   if (aba === "lives") iniciarLives();
+  if (aba === "edits") iniciarEdits();
 }
 window.addEventListener("hashchange", mostrarAba);
 
@@ -814,24 +1027,35 @@ async function buscarVods(atualizar) {
     </article>`).join("") : `<p class="vazio">Nenhum VOD arquivado nesse canal.</p>`;
 }
 
-async function verTrabalho() {
-  const t = await api("/api/trabalho");
-  const caixa = $("#lv-trabalho");
-  if (!t.atual) { caixa.innerHTML = ""; return; }
+// A caixa do trabalho em andamento. O trabalho é um só (lives e edits disputam a GPU), então as
+// duas abas mostram o mesmo, com o link para onde o resultado aparece.
+function htmlTrabalho(t) {
+  if (!t.atual) return "";
   const a = t.atual;
+  const ondeFica = a.tipo === "baixar-youtube"
+    ? (a.resultado ? `Baixado em <code>${esc(a.resultado)}</code>` + (abaAtual() === "edits"
+        ? `, já no campo ${a.campo === "musica" ? "Música" : "Filme"}.` : `. Use na aba <a href="#edits">Edits</a>.`) : "")
+    : !(a.tipo || "").startsWith("edit") ? `Os cortes estão na aba <a href="#revisao">Revisão</a>.`
+    : abaAtual() === "edits" ? "O edit está na lista abaixo." : `O edit está na aba <a href="#edits">Edits</a>.`;
   const estado = a.erro ? `<b class="ruim">falhou</b>` : a.rodando
     ? `<b class="andando">${esc(a.passo)}<span class="pontos">…</span></b>` : `<b class="bom">pronto</b>`;
   const min = Math.round(((a.fim || Date.now() / 1000) - a.inicio) / 60);
   const pct = a.progresso == null ? "" : ` ${Math.round(a.progresso * 100)}%`;
-  caixa.innerHTML = `<div class="trabalho ${a.erro ? "erro" : a.rodando ? "rodando" : "feito"}">
+  return `<div class="trabalho ${a.erro ? "erro" : a.rodando ? "rodando" : "feito"}">
     <div class="linha"><span>${esc(a.titulo || a.url)}</span>${estado}<span class="motivo">${min} min${pct}</span></div>
     ${a.rodando ? `<progress class="progresso" max="1"${a.progresso == null ? "" : ` value="${a.progresso}"`}></progress>` : ""}
     ${a.erro ? `<p class="motivo">${esc(a.erro)}</p>` : ""}
-    ${!a.rodando && !a.erro ? `<p class="motivo">Os cortes estão na aba <a href="#revisao">Revisão</a>.</p>` : ""}
+    ${!a.rodando && !a.erro ? `<p class="motivo">${ondeFica}</p>` : ""}
     <pre class="log">${esc(t.log.slice(-14).join(String.fromCharCode(10)))}</pre>
   </div>`;
+}
+
+async function verTrabalho() {
+  const t = await api("/api/trabalho");
+  $("#lv-trabalho").innerHTML = htmlTrabalho(t);
+  const a = t.atual;
   clearTimeout(lvTimer);
-  if (a.rodando && abaAtual() === "lives") lvTimer = setTimeout(verTrabalho, 2000);
+  if (a?.rodando && abaAtual() === "lives") lvTimer = setTimeout(verTrabalho, 2000);
 }
 
 $("#lv-canal").addEventListener("change", () => buscarVods(false));
@@ -887,6 +1111,536 @@ Baixa o áudio da live inteira e gera os cortes. Pode levar bastante tempo.`)) r
   if (!r.ok) { alert(r.erro); return; }
   verTrabalho();
 });
+
+// ---------------------------------------------------------------- edits de filme
+let edCarregado = false, edTimer = null, edRodava = false;
+
+function iniciarEdits() {
+  if (!edCarregado) {
+    edCarregado = true;
+    const p = E.edit || {};
+    if (p.duracao_musica) $("#ed-duracao").placeholder = `${p.duracao_musica} (padrão; o tema pode pedir outra)`;
+    if (p.proporcao) $("#ed-proporcao option[value='']").textContent = `Padrão do config (${p.proporcao})`;
+    if (p.slowed) $("#ed-slowed option[value='']").textContent = `Padrão do config (${String(p.slowed).replace(".", ",")}×)`;
+    if (p.drop_fala) $("#ed-drop-fala option[value='']").textContent =
+      `Padrão do config (${p.drop_fala === "depois" ? "depois da fala" : "durante a fala"})`;
+    if (p.musica_no_gancho !== undefined) $("#ed-musica-gancho option[value='']").textContent =
+      `Padrão do config (${p.musica_no_gancho ? "baixinha debaixo da fala" : "muda até o drop"})`;
+    if (p.idioma) {
+      const nome = $(`#ed-idioma option[value='${p.idioma}']`);
+      $("#ed-idioma option[value='']").textContent = `Padrão do config (${nome ? nome.textContent : p.idioma})`;
+    }
+    if (p.transicoes) $("#ed-transicoes option[value='']").textContent = `Padrão do config (${
+      !p.transicoes.length ? "nenhuma" : p.transicoes.length >= 5 ? "variadas" : p.transicoes.join(", ")})`;
+  }
+  $("#ed-sem-chave").hidden = !!E.ia_disponivel;
+  carregarEdits();
+  verTrabalhoEdit();
+}
+
+async function verTrabalhoEdit() {
+  const t = await api("/api/trabalho");
+  $("#ed-trabalho").innerHTML = htmlTrabalho(t);
+  const rodando = !!t.atual?.rodando;
+  if (edRodava && !rodando) carregarEdits();      // acabou: o edit novo aparece na lista
+  usarBaixado(t.atual);
+  edRodava = rodando;
+  clearTimeout(edTimer);
+  if (rodando && abaAtual() === "edits") edTimer = setTimeout(verTrabalhoEdit, 2000);
+}
+
+function cardEdit(e) {
+  const quando = new Date(e.quando * 1000).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
+  // classe própria: os ouvintes da aba Revisão pegam qualquer ".card" e tentariam salvar o edit como corte
+  return `<article class="card-edit" data-id="${esc(e.id)}">
+    <div class="palco"><div class="fone">${e.renderizado
+      ? `<video src="/video-edit/${encodeURI(e.id)}?t=${Math.round(e.quando)}" controls preload="metadata" playsinline></video>`
+      : `<p class="vazio">Só o plano: ainda não renderizado.</p>`}</div></div>
+    <div class="info">
+      <div class="meta"><span class="badge">${esc(e.filme)}</span><span class="badge fmt-tiktok">${esc(e.musica)}</span>
+        <span>${e.duracao ? e.duracao.toFixed(1) + "s" : ""}</span><span>${e.cortes} cortes · ${e.bpm} BPM</span>
+        ${e.renderizado ? `<span>${mb(e.bytes)}</span>` : ""}<span>${quando}</span>
+        <span class="badge">${e.com_ia ? "IA" : "sem IA"}</span></div>
+      ${e.gancho ? `<div class="gancho">“${esc(e.gancho)}”${e.gancho_inicio != null ? ` <span class="motivo">em ${hhmmss(e.gancho_inicio)}</span>` : ""}</div>` : ""}
+      <label class="campo"><span class="rotulo">Título</span>
+        <input class="titulo" maxlength="100" value="${esc(e.titulo)}" aria-label="Título"></label>
+      <label class="campo"><span class="rotulo">Descrição</span>
+        <textarea class="descricao" aria-label="Descrição">${esc(e.descricao)}</textarea></label>
+      <label class="campo"><span class="rotulo">Hashtags</span>
+        <input class="hashtags" value="${esc(comCerquilha(e.hashtags))}" aria-label="Hashtags"></label>
+      ${e.motivo ? `<div class="motivo">IA: ${esc(e.motivo)}</div>` : ""}
+      <div class="acoes">
+        <button class="ed-ajustar">Ajustar o edit</button>
+        <button class="ed-render">${e.renderizado ? "Renderizar de novo" : "Renderizar"}</button>
+        <button class="ed-prontos"${e.renderizado ? "" : " disabled"}>Copiar para prontos</button>
+      </div>
+      <div class="salvo" aria-live="polite"></div>
+    </div></article>`;
+}
+
+async function carregarEdits() {
+  const lista = await api("/api/edits");
+  if (!Array.isArray(lista)) return;
+  $("#ed-lista").innerHTML = lista.length ? lista.map(cardEdit).join("")
+    : `<p class="vazio">Nenhum edit ainda. Escolha o filme e a música acima.</p>`;
+}
+
+const valorDe = id => $("#" + id).value.trim();
+
+// Download do YouTube: quando termina, o arquivo vai para o campo escolhido. Uma vez por download
+// (o `inicio` identifica o trabalho), para não apagar o que a pessoa digitou depois.
+let ytUsado = null;
+function usarBaixado(a) {
+  if (!a || a.tipo !== "baixar-youtube" || a.rodando || a.erro || !a.resultado || ytUsado === a.inicio) return;
+  ytUsado = a.inicio;
+  $(a.campo === "musica" ? "#ed-musica" : "#ed-filme").value = a.resultado;
+  $("#ed-yt-recado").textContent = "";
+}
+
+$("#ed-yt-baixar").addEventListener("click", async ev => {
+  const url = valorDe("ed-yt-url");
+  if (!url) { $("#ed-yt-recado").textContent = "cole o endereço do vídeo"; return; }
+  ev.target.disabled = true;
+  $("#ed-yt-recado").textContent = "começando…";
+  const r = await api("/api/youtube", { url, campo: $("#ed-yt-campo").value });
+  ev.target.disabled = false;
+  $("#ed-yt-recado").textContent = r.ok ? "baixando… acompanhe abaixo" : r.erro;
+  if (r.ok) { $("#ed-yt-url").value = ""; verTrabalhoEdit(); }
+});
+
+$("#ed-form").addEventListener("submit", async ev => {
+  ev.preventDefault();
+  const botao = ev.target.querySelector("button[type=submit]");
+  const pedido = {
+    filme: valorDe("ed-filme"), musica: valorDe("ed-musica"), tema: valorDe("ed-tema"),
+    trecho_inicio: valorDe("ed-trecho-inicio"), trecho_fim: valorDe("ed-trecho-fim"),
+    gancho_inicio: valorDe("ed-gancho-inicio"), gancho_fim: valorDe("ed-gancho-fim"),
+    drop: valorDe("ed-drop"), drop_filme: valorDe("ed-drop-filme"), fala_drop: valorDe("ed-fala-drop"),
+    ritmo: valorDe("ed-ritmo"), drop_fala: valorDe("ed-drop-fala"), abertura: valorDe("ed-abertura"), proporcao: valorDe("ed-proporcao"), slowed: valorDe("ed-slowed"), duracao: valorDe("ed-duracao"),
+    transicoes: valorDe("ed-transicoes"), idioma: valorDe("ed-idioma"), musica_gancho: valorDe("ed-musica-gancho"),
+    volume_musica: valorDe("ed-volume-musica"),
+    sem_ia: $("#ed-sem-ia").checked, so_planejar: $("#ed-so-planejar").checked, prontos: $("#ed-prontos").checked,
+  };
+  if (!pedido.filme || !pedido.musica) { $("#ed-recado").textContent = "escolha o filme e a música"; return; }
+  botao.disabled = true;
+  $("#ed-recado").textContent = "começando…";
+  const r = await api("/api/edit", pedido);
+  botao.disabled = false;
+  $("#ed-recado").textContent = r.ok ? "" : r.erro;
+  if (r.ok) verTrabalhoEdit();
+});
+
+$("#ed-lista").addEventListener("change", async ev => {
+  const card = ev.target.closest(".card-edit");
+  if (!card || !ev.target.matches(".titulo, .descricao, .hashtags")) return;
+  const r = await api(`/api/edits/${encodeURI(card.dataset.id)}/texto`, {
+    titulo: $(".titulo", card).value, descricao: $(".descricao", card).value, hashtags: $(".hashtags", card).value });
+  $(".salvo", card).textContent = r.ok ? "salvo" : r.erro;
+});
+
+$("#ed-lista").addEventListener("click", async ev => {
+  const b = ev.target.closest("button"), card = ev.target.closest(".card-edit");
+  if (!b || !card) return;
+  const id = encodeURI(card.dataset.id);
+  if (b.classList.contains("ed-ajustar")) {
+    abrirAjuste(card.dataset.id);
+  } else if (b.classList.contains("ed-render")) {
+    b.disabled = true;
+    const r = await api(`/api/edits/${id}/renderizar`, {});
+    b.disabled = false;
+    $(".salvo", card).textContent = r.ok ? "renderizando… acompanhe acima" : r.erro;
+    if (r.ok) { verTrabalhoEdit(); window.scrollTo({ top: 0, behavior: "smooth" }); }
+  } else if (b.classList.contains("ed-prontos")) {
+    const r = await api(`/api/edits/${id}/prontos`, {});
+    $(".salvo", card).textContent = r.ok ? (r.arquivo ? "copiado para " + r.arquivo : "a pasta de prontos está desligada no config") : r.erro;
+  }
+});
+
+// ---------------------------------------------------------------- ajuste do drop e do gancho
+// O filme não toca no navegador (mkv/HEVC): cada quadro vem do painel (/quadro-edit), já no
+// recorte do edit. Marcas: gancho, momento do drop no filme e fim da fala do gatilho; a batida do
+// drop se escolhe na onda da música. "Aplicar" refaz o plano sem IA e gera uma prévia de 540 px.
+const AJ = { id: null, d: null, t: 0, m: {}, dropMus: null, pedido: 0, timer: null, previaDe: null };
+const fmtT = s => {        // h:mm:ss.cc, arredondando para o centésimo (2:21.995 vira 2:22.00)
+  if (s == null) return "—";
+  const cs = Math.round(s * 100);
+  return `${hhmmss(Math.floor(cs / 100))}.${String(cs % 100).padStart(2, "0")}`;
+};
+const lerT = txt => {
+  const p = String(txt).trim().split(":").map(Number);
+  if (!p.length || p.some(isNaN)) return null;
+  return p.reduce((a, x) => a * 60 + x, 0);
+};
+
+async function abrirAjuste(id) {
+  AJ.id = id; AJ.previaDe = null; AJ.planos = null;
+  aba("drop");
+  $("#aj-escolha").hidden = true;
+  $("#aj-msg").textContent = "carregando…";
+  $("#aj-previa").hidden = true;
+  $("#dlg-aj").showModal();
+  const r = await api(`/api/edits/${encodeURI(id)}/linha`);
+  if (r.ok === false) { $("#aj-msg").textContent = r.erro; return; }
+  AJ.d = r;
+  carregarMarcas(r.plano);
+  $("#aj-nome").textContent = r.filme.nome;
+  $("#aj-barra").max = r.filme.duracao;
+  $("#aj-audio").src = `/audio-edit/${encodeURI(id)}`;
+  $("#aj-desfazer").disabled = !r.tem_anterior;
+  $("#aj-msg").textContent = "";
+  desenharOnda();
+  irPara(AJ.m.drop_filme ?? AJ.m.gancho_fim ?? AJ.m.gancho_ini ?? 0);
+}
+
+function carregarMarcas(p) {
+  AJ.m = { gancho_ini: p.gancho?.inicio ?? null, gancho_fim: p.gancho?.fim ?? null,
+           drop_filme: p.gatilho?.momento ?? null, fala_fim: p.gatilho?.fala_fim ?? null };
+  $("#aj-modo").value = p.gatilho?.modo || "depois";
+  $("#aj-volume").value = p.volume_musica ?? 1;
+  mostrarVolume();
+  carregarGeral(p);
+  $("#aj-sem-gancho").checked = !p.gancho;
+  AJ.dropMus = null;
+  mostrarMarcas();
+}
+
+function carregarGeral(p) {
+  $("#aj-ritmo").value = p.ritmo || "normal";
+  $("#aj-duracao").value = p.duracao_musica != null ? Math.round(p.duracao_musica) : "";
+  const t = p.transicoes || [], sel = $("#aj-transicoes");
+  sel.querySelector("option.personalizada")?.remove();
+  const valor = !t.length ? "nenhuma" : t.length >= 5 ? "variadas" : t.join(",");
+  if (![...sel.options].some(o => o.value === valor))          // veio do config com outra combinação
+    sel.insertAdjacentHTML("beforeend", `<option class="personalizada" value="${esc(valor)}">Do edit: ${esc(t.join(", "))}</option>`);
+  sel.value = valor;
+  $("#aj-abertura").value = p.abertura ? "sim" : "nao";
+  $("#aj-musica-gancho").value = p.musica_no_gancho === false ? "nao" : "sim";
+  $("#aj-geral-info").textContent = `Agora: ${p.cortes.length} cortes, ${p.duracao.toFixed(1)}s de edit`
+    + (p.abertura ? `, abertura com ${p.abertura_falas} fala${p.abertura_falas === 1 ? "" : "s"}` : "") + ".";
+}
+
+function mostrarVolume() {
+  const v = +$("#aj-volume").value;
+  $("#aj-volume-txt").textContent = `${Math.round(v * 100)}%${v === 1 ? " (padrão)" : ""}`;
+}
+$("#aj-volume").addEventListener("input", mostrarVolume);
+
+function mostrarMarcas() {
+  document.querySelectorAll("#aj-marcas .aj-marca").forEach(el => {
+    $(".valor", el).textContent = fmtT(AJ.m[el.dataset.campo]);
+  });
+  const sem = $("#aj-sem-gancho").checked;
+  document.querySelectorAll('[data-campo^="gancho"]').forEach(el => el.classList.toggle("off", sem));
+  const p = AJ.d?.plano;
+  $("#aj-drop-mus").textContent = AJ.dropMus != null ? `drop na batida de ${AJ.dropMus.toFixed(2)}s (escolhida)`
+    : p ? `drop na batida de ${p.drop.toFixed(2)}s (${p.duracao.toFixed(1)}s de edit)` : "";
+}
+
+function irPara(t) {
+  if (!AJ.d) return;
+  const dur = AJ.d.filme.duracao;
+  AJ.t = Math.min(Math.max(0, +t || 0), Math.max(0, dur - 0.05));
+  $("#aj-barra").value = AJ.t;
+  if (document.activeElement !== $("#aj-tempo")) $("#aj-tempo").value = fmtT(AJ.t);
+  clearTimeout(AJ.timer);       // arrastando a barra: só pede o quadro quando ela para um instante
+  AJ.timer = setTimeout(() => { $("#aj-quadro").src = `/quadro-edit/${encodeURI(AJ.id)}?t=${AJ.t.toFixed(3)}&w=360`; }, 60);
+  mostrarFalas();
+}
+
+function mostrarFalas() {
+  const ps = AJ.d.palavras, linhas = [];
+  let atual = [];
+  for (const p of ps) {
+    if (atual.length && (p.s - atual[atual.length - 1].e > 0.6 || /[.!?]$/.test(atual[atual.length - 1].w))) { linhas.push(atual); atual = []; }
+    atual.push(p);
+  }
+  if (atual.length) linhas.push(atual);
+  const perto = linhas.filter(l => l[l.length - 1].e > AJ.t - 25 && l[0].s < AJ.t + 25);
+  const corrente = perto.filter(l => l[0].s <= AJ.t + 0.3).pop();  // a última fala que já começou
+  $("#aj-falas").innerHTML = perto.length ? perto.map(l => {
+    const agora = l === corrente;
+    return `<button type="button" class="aj-fala${agora ? " on" : ""}" data-s="${l[0].s}" data-e="${l[l.length - 1].e}">
+      <span class="motivo">${fmtT(l[0].s)}</span> ${esc(l.map(p => p.w).join(" "))}</button>`;
+  }).join("") : `<p class="vazio">Nenhuma fala perto deste momento.</p>`;
+  const box = $("#aj-falas"), on = box.querySelector(".aj-fala.on");   // a fala de agora fica à vista
+  if (on) box.scrollTop = on.offsetTop - box.offsetTop - box.clientHeight / 3;
+}
+
+function desenharOnda() {
+  const mus = AJ.d.musica, drop = AJ.dropMus ?? AJ.d.plano.drop;
+  const pinta = (cv, ini, fim, comBatidas) => {
+    const w = cv.clientWidth || 800, h = cv.height;
+    cv.width = w;
+    const c = cv.getContext("2d"), estilo = getComputedStyle(document.documentElement);
+    c.clearRect(0, 0, w, h);
+    const x = t => (t - ini) / (fim - ini) * w;
+    c.fillStyle = estilo.getPropertyValue("--borda-viva").trim() || "#5a2f9e";
+    for (let px = 0; px < w; px++) {
+      const t = ini + px / w * (fim - ini), i = Math.floor(t / mus.passo);
+      const v = (mus.onda[i] || 0) / 100 * (h - 4);
+      c.fillRect(px, (h - v) / 2, 1, Math.max(1, v));
+    }
+    if (comBatidas) {           // as batidas: linhas finas por cima da onda (o drop sempre cai numa)
+      c.fillStyle = estilo.getPropertyValue("--ciano").trim() || "#22e3ff";
+      c.globalAlpha = 0.45;
+      for (const b of mus.batidas) if (b >= ini && b <= fim) c.fillRect(Math.round(x(b)), 0, 1, h);
+      c.globalAlpha = 1;
+    }
+    c.fillStyle = estilo.getPropertyValue("--rosa").trim() || "#ff2d95";
+    c.fillRect(Math.round(x(drop)) - 1, 0, 3, h);
+  };
+  pinta($("#aj-onda-toda"), 0, mus.duracao, false);
+  const ini = Math.max(0, drop - 12), fim = Math.min(mus.duracao, ini + 30);
+  AJ.janela = [ini, fim];
+  pinta($("#aj-onda"), ini, fim, true);
+}
+
+function escolherBatida(cv, ini, fim, ev) {
+  const r = cv.getBoundingClientRect(), t = ini + (ev.clientX - r.left) / r.width * (fim - ini);
+  const bs = AJ.d.musica.batidas;
+  AJ.dropMus = bs.reduce((m, b) => Math.abs(b - t) < Math.abs(m - t) ? b : m, bs[0]);
+  mostrarMarcas(); desenharOnda();
+}
+
+$("#aj-onda-toda").addEventListener("click", ev => AJ.d && escolherBatida(ev.currentTarget, 0, AJ.d.musica.duracao, ev));
+$("#aj-onda").addEventListener("click", ev => AJ.d && escolherBatida(ev.currentTarget, ...AJ.janela, ev));
+$("#aj-drop-auto").addEventListener("click", () => { AJ.dropMus = null; mostrarMarcas(); desenharOnda(); });
+$("#aj-ouvir").addEventListener("click", () => {
+  const a = $("#aj-audio"), drop = AJ.dropMus ?? AJ.d.plano.drop;
+  a.currentTime = Math.max(0, drop - 3); a.play();
+  clearTimeout(AJ.parar); AJ.parar = setTimeout(() => a.pause(), 6000);
+});
+$("#aj-barra").addEventListener("input", ev => irPara(ev.target.value));
+$("#aj-tempo").addEventListener("change", ev => { const t = lerT(ev.target.value); if (t != null) irPara(t); });
+document.querySelector("#dlg-aj .aj-nav").addEventListener("click", ev => {
+  const p = ev.target.closest("button")?.dataset.passo;
+  if (!p) return;
+  const q = 1 / (AJ.d?.filme.fps || 24);
+  irPara(AJ.t + (p === "-q" ? -q : p === "+q" ? q : +p));
+});
+$("#aj-falas").addEventListener("click", ev => { const b = ev.target.closest(".aj-fala"); if (b) irPara(+b.dataset.s); });
+$("#aj-marcas").addEventListener("click", ev => {
+  const b = ev.target.closest("button"), el = ev.target.closest(".aj-marca");
+  if (!b || !el) return;
+  const campo = el.dataset.campo;
+  if (b.classList.contains("aqui")) AJ.m[campo] = Math.round(AJ.t * 1000) / 1000;
+  else if (b.classList.contains("limpar")) AJ.m[campo] = null;
+  else if (b.classList.contains("ver") && AJ.m[campo] != null) irPara(AJ.m[campo]);
+  if (campo.startsWith("gancho") && b.classList.contains("aqui")) $("#aj-sem-gancho").checked = false;
+  mostrarMarcas();
+});
+$("#aj-sem-gancho").addEventListener("change", mostrarMarcas);
+document.getElementById("dlg-aj").addEventListener("keydown", ev => {
+  if (ev.target.matches("input, select, textarea") || !["ArrowLeft", "ArrowRight"].includes(ev.key)) return;
+  ev.preventDefault();
+  const passo = ev.shiftKey ? 1 : 1 / (AJ.d?.filme.fps || 24);
+  irPara(AJ.t + (ev.key === "ArrowLeft" ? -passo : passo));
+});
+$("#aj-fechar").addEventListener("click", () => { $("#aj-audio").pause(); $("#dlg-aj").close(); });
+
+function pedidoAjuste() {
+  const sem = $("#aj-sem-gancho").checked, m = AJ.m;
+  if (!sem && (m.gancho_ini == null || m.gancho_fim == null)) return "marque o começo e o fim do gancho (ou marque “sem gancho”)";
+  if (!sem && m.gancho_fim <= m.gancho_ini) return "o gancho precisa terminar depois de começar";
+  if (m.fala_fim != null && (m.drop_filme == null || m.fala_fim <= m.drop_filme)) return "a fala do gatilho termina depois do momento do drop";
+  return { gancho: sem ? null : [m.gancho_ini, m.gancho_fim], drop_filme: m.drop_filme, fala_fim: m.fala_fim,
+           drop_fala: $("#aj-modo").value, drop_musica: AJ.dropMus, volume_musica: +$("#aj-volume").value,
+           ritmo: $("#aj-ritmo").value, duracao_musica: $("#aj-duracao").value || null,
+           transicoes: $("#aj-transicoes").value, abertura: $("#aj-abertura").value === "sim",
+           musica_no_gancho: $("#aj-musica-gancho").value === "sim" };
+}
+
+async function esperarPrevia() {
+  const t = await api("/api/trabalho");
+  const a = t.atual;
+  if (a?.rodando) {
+    $("#aj-msg").textContent = `gerando a prévia… ${a.progresso != null ? Math.round(a.progresso * 100) + "%" : ""}`;
+    setTimeout(esperarPrevia, 1000);
+    return;
+  }
+  if (a?.erro) { $("#aj-msg").textContent = "a prévia falhou: " + a.erro; return; }
+  $("#aj-msg").textContent = "prévia pronta: confira e, se estiver bom, renderize o final";
+  $("#aj-gerar-previa").disabled = false;
+  const v = $("#aj-previa");
+  v.src = `/video-edit/${encodeURI(AJ.id)}?previa=1&v=${Date.now()}`;
+  v.hidden = false;
+  const p = AJ.d.plano, ini = (p.abertura_dur || 0) + (p.gancho ? p.gancho.fim - p.gancho.inicio : 0);
+  v.addEventListener("loadedmetadata", () => { v.currentTime = Math.max(0, ini - 4); }, { once: true });
+  $("#aj-aplicar").disabled = false;
+}
+
+$("#aj-aplicar").addEventListener("click", async () => {
+  if (AJ.d?.plano.cortes_editados && !confirm("Ajustar o drop e o gancho monta os cortes de novo: as mudanças feitas "
+      + "na aba Cortes se perdem. Continuar?")) return;
+  const pedido = pedidoAjuste();
+  if (typeof pedido === "string") { $("#aj-msg").textContent = pedido; return; }
+  $("#aj-aplicar").disabled = true;
+  $("#aj-msg").textContent = "refazendo o plano…";
+  const r = await api(`/api/edits/${encodeURI(AJ.id)}/ajustar`, pedido);
+  if (!r.ok) { $("#aj-msg").textContent = r.erro; $("#aj-aplicar").disabled = false; return; }
+  AJ.d.plano = r.plano;
+  carregarMarcas(r.plano);
+  desenharOnda();
+  $("#aj-desfazer").disabled = false;
+  const p = await api(`/api/edits/${encodeURI(AJ.id)}/previa`, {});
+  if (!p.ok) { $("#aj-msg").textContent = p.erro; $("#aj-aplicar").disabled = false; return; }
+  esperarPrevia();
+});
+
+$("#aj-desfazer").addEventListener("click", async () => {
+  const r = await api(`/api/edits/${encodeURI(AJ.id)}/desfazer`, {});
+  if (!r.ok) { $("#aj-msg").textContent = r.erro; return; }
+  AJ.d.plano = r.plano;
+  carregarMarcas(r.plano);
+  desenharOnda();
+  mostrarCortes();
+  $("#aj-msg").textContent = "voltou o plano de antes do último ajuste (gere a prévia de novo para ver)";
+});
+
+// ---- aba Cortes: cada corte da música com o quadro do meio do trecho, a transição e as ações
+const NOMES_TRANSICAO = { zoom: "zoom", flash: "flash", chicote: "chicote", giro: "giro", fusao: "fusão", corte: "corte seco" };
+function aba(qual) {
+  const cortes = qual === "cortes";
+  for (const nome of ["drop", "cortes", "geral"]) {
+    $(`#aj-aba-${nome}`).setAttribute("aria-selected", String(nome === qual));
+    $(`#aj-painel-${nome}`).hidden = nome !== qual;
+  }
+  $("#aj-aplicar").hidden = cortes;
+  $("#aj-gerar-previa").hidden = !cortes;
+  if (cortes) mostrarCortes();
+}
+$("#aj-aba-drop").addEventListener("click", () => aba("drop"));
+$("#aj-aba-cortes").addEventListener("click", () => aba("cortes"));
+$("#aj-aba-geral").addEventListener("click", () => aba("geral"));
+
+function mostrarCortes() {
+  if (!AJ.d) return;
+  const id = encodeURI(AJ.id), cs = AJ.d.plano.cortes;
+  $("#aj-cortes").innerHTML = cs.map((c, i) => {
+    const meio = c.fonte + c.dur * c.vel / 2;
+    const opcoes = Object.entries(NOMES_TRANSICAO).map(([v, n]) =>
+      `<option value="${v}"${(c.transicao || "corte") === v ? " selected" : ""}>${n}</option>`).join("");
+    return `<li class="aj-corte" data-i="${i}">
+      <img src="/quadro-edit/${id}?t=${meio.toFixed(3)}&w=110" alt="Quadro do corte ${i + 1}" loading="lazy">
+      <div class="aj-corte-info"><b>${i + 1}</b> <span class="motivo">${fmtT(c.saida).replace(/^0:0?/, "")} · ${c.dur.toFixed(2)}s
+        · plano ${c.cena}${c.vel < 0.99 ? ` · ${c.vel.toFixed(2)}×` : ""}</span>
+        <label class="aj-trans"><span class="rotulo">${i === 0 ? "Entra no drop com" : "Entra com"}</span>
+          <select class="trans" aria-label="Transição do corte ${i + 1}">${opcoes}</select></label></div>
+      <div class="aj-corte-acoes">
+        <button type="button" data-op="antes" title="O trecho começa 0,25 s antes no filme">◀ 0,25s</button>
+        <button type="button" data-op="depois" title="O trecho começa 0,25 s depois no filme">0,25s ▶</button>
+        <button type="button" data-op="trocar">Trocar plano</button>
+        <button type="button" data-op="dividir" title="Divide na batida mais perto do meio">Dividir</button>
+        <button type="button" data-op="excluir" title="O corte de antes fica com a vez dele" aria-label="Excluir o corte ${i + 1}">×</button>
+      </div></li>`;
+  }).join("");
+}
+
+async function operar(op) {
+  $("#aj-msg").textContent = "gravando…";
+  const r = await api(`/api/edits/${encodeURI(AJ.id)}/corte`, op);
+  if (!r.ok) { $("#aj-msg").textContent = r.erro; return false; }
+  AJ.d.plano = r.plano;
+  $("#aj-desfazer").disabled = false;
+  mostrarCortes();
+  $("#aj-msg").textContent = "gravado: gere a prévia para conferir";
+  return true;
+}
+
+$("#aj-cortes").addEventListener("change", ev => {
+  const li = ev.target.closest(".aj-corte");
+  if (li && ev.target.matches(".trans")) operar({ op: "transicao", i: +li.dataset.i, transicao: ev.target.value });
+});
+$("#aj-cortes").addEventListener("click", ev => {
+  const b = ev.target.closest("button[data-op]"), li = ev.target.closest(".aj-corte");
+  if (!b || !li) return;
+  const i = +li.dataset.i, c = AJ.d.plano.cortes[i];
+  if (b.dataset.op === "antes" || b.dataset.op === "depois")
+    operar({ op: "deslizar", i, fonte: c.fonte + (b.dataset.op === "antes" ? -0.25 : 0.25) });
+  else if (b.dataset.op === "dividir") operar({ op: "dividir", i });
+  else if (b.dataset.op === "excluir") operar({ op: "excluir", i });
+  else if (b.dataset.op === "trocar") abrirEscolha(i);
+});
+
+async function abrirEscolha(i) {
+  if (!AJ.planos) {
+    const r = await api(`/api/edits/${encodeURI(AJ.id)}/planos`);
+    if (r.ok === false) { $("#aj-msg").textContent = r.erro; return; }
+    AJ.planos = r;
+  }
+  const c = AJ.d.plano.cortes[i], precisa = c.dur * 0.5 + 0.1, usados = new Set(AJ.d.plano.cortes.map(x => x.cena));
+  AJ.escolhendo = i;
+  $("#aj-escolha-titulo").textContent = `Trocar o plano do corte ${i + 1} (${c.dur.toFixed(2)}s)`;
+  $("#aj-grade").innerHTML = AJ.planos.map(p => {
+    const dur = p.fim - p.inicio, curto = dur < precisa;
+    return `<button type="button" class="aj-op${usados.has(p.id) ? " usado" : ""}${p.id === c.cena ? " atual" : ""}"
+      data-cena="${p.id}"${curto ? " disabled" : ""} title="${curto ? "curto demais para este corte" : usados.has(p.id) ? "já está no edit" : ""}">
+      <img src="/mini-edit/${encodeURI(AJ.id)}?cena=${p.id}" alt="Plano ${p.id}" loading="lazy">
+      <span>${p.id} · ${dur.toFixed(1)}s</span></button>`;
+  }).join("");
+  $("#aj-escolha").hidden = false;
+  $("#aj-escolha").scrollIntoView({ block: "nearest" });
+}
+$("#aj-escolha-fechar").addEventListener("click", () => { $("#aj-escolha").hidden = true; });
+$("#aj-grade").addEventListener("click", async ev => {
+  const b = ev.target.closest("button[data-cena]");
+  if (!b || b.disabled) return;
+  if (await operar({ op: "plano", i: AJ.escolhendo, cena: +b.dataset.cena })) $("#aj-escolha").hidden = true;
+});
+
+$("#aj-gerar-previa").addEventListener("click", async () => {
+  $("#aj-gerar-previa").disabled = true;
+  const p = await api(`/api/edits/${encodeURI(AJ.id)}/previa`, {});
+  if (!p.ok) { $("#aj-msg").textContent = p.erro; $("#aj-gerar-previa").disabled = false; return; }
+  esperarPrevia();
+});
+
+$("#aj-final").addEventListener("click", async () => {
+  const r = await api(`/api/edits/${encodeURI(AJ.id)}/renderizar`, {});
+  if (!r.ok) { $("#aj-msg").textContent = r.erro; return; }
+  $("#aj-audio").pause();
+  $("#dlg-aj").close();
+  verTrabalhoEdit();
+  window.scrollTo({ top: 0, behavior: "smooth" });
+});
+
+// Seletor de arquivos. Quem lista as pastas é o painel, porque o navegador não informa o caminho
+// do arquivo escolhido num <input type=file>, e o comando do edit precisa do caminho.
+let arqAlvo = null, arqTipo = "video", arqPai = null;
+
+async function abrirPasta(pasta) {
+  $("#arq-msg").textContent = "";
+  const r = await api(`/api/arquivos?tipo=${arqTipo}&pasta=${encodeURIComponent(pasta || "")}`);
+  if (r.ok === false) { $("#arq-msg").textContent = r.erro; return; }
+  arqPai = r.pai;
+  $("#arq-pasta").value = r.pasta;
+  $("#arq-subir").disabled = !r.pai;
+  $("#arq-atalhos").innerHTML = r.atalhos.map(a => `<button type="button" data-pasta="${esc(a.pasta)}">${esc(a.nome)}</button>`).join("");
+  const junta = n => r.pasta.replace(/[\\/]+$/, "") + "\\" + n;
+  $("#arq-lista").innerHTML = r.pastas.map(n => `<li><button type="button" class="pasta" data-pasta="${esc(junta(n))}">📁 ${esc(n)}</button></li>`).join("")
+    + r.arquivos.map(a => `<li><button type="button" class="arq" data-arquivo="${esc(junta(a.nome))}">${esc(a.nome)} <span class="motivo">${a.mb} MB</span></button></li>`).join("")
+    || `<li class="motivo">Nada aqui: nenhuma subpasta nem arquivo de ${arqTipo === "video" ? "vídeo" : "áudio"}.</li>`;
+}
+
+document.addEventListener("click", ev => {
+  const b = ev.target.closest("button[data-procurar]");
+  if (!b) return;
+  arqAlvo = $("#" + b.dataset.alvo);
+  arqTipo = b.dataset.procurar;
+  $("#arq-titulo").textContent = arqTipo === "video" ? "Escolher o filme" : "Escolher a música";
+  $("#dlg-arq").showModal();
+  const atual = arqAlvo.value.trim().replace(/^"|"$/g, "");
+  abrirPasta(atual ? atual.replace(/[\\/][^\\/]*$/, "") : "");
+});
+$("#dlg-arq").addEventListener("click", ev => {
+  const b = ev.target.closest("button[data-pasta], button[data-arquivo]");
+  if (!b) return;
+  if (b.dataset.arquivo) { arqAlvo.value = b.dataset.arquivo; $("#dlg-arq").close(); return; }
+  abrirPasta(b.dataset.pasta);
+});
+$("#arq-ir").addEventListener("submit", ev => { ev.preventDefault(); abrirPasta($("#arq-pasta").value); });
+$("#arq-subir").addEventListener("click", () => arqPai && abrirPasta(arqPai));
+$("#arq-fechar").addEventListener("click", () => $("#dlg-arq").close());
 
 mostrarAba();
 </script>

@@ -150,14 +150,14 @@ main { padding: 20px; max-width: 1540px; margin: 0 auto; }
 
 .grade { display: grid; gap: 20px; grid-template-columns: repeat(auto-fill, minmax(660px, 1fr)); }
 
-.card {
+.card, .card-edit {
   background: linear-gradient(180deg, var(--noite-2), #170e2f);
   border: 1px solid var(--borda); border-radius: var(--r); overflow: hidden;
   display: grid; grid-template-columns: auto 1fr;
   box-shadow: var(--sombra);
   transition: border-color .18s, box-shadow .18s, transform .18s;
 }
-.card:hover { border-color: var(--borda-viva); transform: translateY(-2px);
+.card:hover, .card-edit:hover { border-color: var(--borda-viva); transform: translateY(-2px);
               box-shadow: var(--sombra), 0 0 24px rgba(122, 77, 255, .25); }
 .card.aprovado { border-color: var(--lima); box-shadow: var(--sombra), 0 0 20px var(--lima-fog); }
 .card.rejeitado { opacity: .45; filter: saturate(.4); }
@@ -355,19 +355,19 @@ dialog::backdrop { background: rgba(10, 5, 22, .72); backdrop-filter: blur(3px);
 @media (max-width: 460px) {
   main, .oficina { padding: 14px; }
   .grade { grid-template-columns: 1fr; }
-  .card { grid-template-columns: 1fr; }
+  .card, .card-edit { grid-template-columns: 1fr; }
   video { width: 100%; height: auto; aspect-ratio: 9/16; }
   .contagem { margin-left: 0; }
 }
 
 @media (max-width: 720px) {
-  .card { grid-template-columns: 1fr; }
+  .card, .card-edit { grid-template-columns: 1fr; }
   .palco { padding: 12px; }
 }
 
 @media (prefers-reduced-motion: reduce) {
   * { transition: none !important; animation: none !important; }
-  .card:hover { transform: none; }
+  .card:hover, .card-edit:hover { transform: none; }
 }
 
 /* ---------------------------------------------------------------- lives: escolher o VOD
@@ -481,3 +481,119 @@ button.chip { background: none; border: 1px solid transparent; border-radius: va
               padding: 3px 9px; cursor: pointer; font: inherit; color: var(--tinta-2); }
 button.chip:hover { border-color: var(--borda-viva); }
 button.chip.on { border-color: var(--ciano); background: var(--ciano-fog); color: var(--tinta); }
+
+/* ---------------------------------------------------------------- edits de filme
+   O formulário é uma ficha de duas colunas: filme e música lado a lado (são o par que define o
+   edit), e o resto em linhas largas embaixo. Os ajustes finos ficam recolhidos. */
+
+.form-edit { max-width: 980px; display: flex; flex-direction: column; gap: 14px; }
+.form-edit > p { margin: 0; }
+.form-edit .campos { display: grid; gap: 12px 16px; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.form-edit .campo.largo { grid-column: 1 / -1; }
+.form-edit .campo .rotulo .motivo { text-transform: none; letter-spacing: 0; }
+.form-edit input:not([type="checkbox"]), .form-edit select { width: 100%; }
+.arquivo { display: flex; gap: 8px; }
+.arquivo input { flex: 1; min-width: 0; }
+.arquivo button { flex: 0 0 auto; }
+.intervalo { display: flex; gap: 10px; align-items: center; color: var(--tinta-3); font-size: 13px; }
+.intervalo input { max-width: 160px; }
+.ajustes > summary { font-size: 13px; padding: 2px 0; }
+.ajustes[open] > summary { margin-bottom: 12px; }
+.form-edit .aviso { margin: 0; }
+#ed-lista { margin-top: 6px; }
+.gancho { font-family: Anton, Impact, sans-serif; font-size: 18px; letter-spacing: .04em; color: var(--rosa);
+          text-shadow: 0 0 14px var(--rosa-fog); text-transform: uppercase; }
+.fone .vazio { width: 288px; height: 512px; display: grid; place-items: center; margin: 0; }
+
+#dlg-arq { width: min(94vw, 720px); }
+.atalhos { display: flex; gap: 6px; flex-wrap: wrap; }
+.atalhos button { font-size: 12px; padding: 4px 10px; }
+#arq-ir input { flex: 1; min-width: 0; }
+.arq-lista { list-style: none; margin: 0; padding: 4px; max-height: min(52vh, 460px); overflow: auto;
+             border: 1px solid var(--borda); border-radius: var(--r-p); background: var(--noite);
+             overscroll-behavior: contain; }
+.arq-lista li.motivo { padding: 10px; }
+.arq-lista button { width: 100%; text-align: left; border: 1px solid transparent; background: none;
+                    padding: 6px 10px; border-radius: var(--r-p); box-shadow: none;
+                    display: flex; gap: 8px; justify-content: space-between; }
+.arq-lista button:hover { border-color: var(--borda-viva); box-shadow: none; }
+.arq-lista button.arq { color: var(--ciano); }
+
+@media (max-width: 720px) {
+  .form-edit .campos { grid-template-columns: 1fr; }
+  .intervalo input { max-width: none; }
+}
+/* com a aba Edits são cinco: num celular elas quebram em duas linhas em vez de sumir pela direita */
+@media (max-width: 460px) {
+  nav { flex-wrap: wrap; }
+}
+
+/* baixar do YouTube: uma faixa só, acima dos campos do filme e da música, que ela preenche */
+.form-edit .youtube { display: flex; flex-direction: column; gap: 4px; padding: 10px 12px;
+                      border: 1px dashed var(--borda-viva); border-radius: var(--r-p); }
+.form-edit .youtube select { width: auto; flex: 0 0 auto; }
+@media (max-width: 720px) {
+  .form-edit .youtube .arquivo { flex-wrap: wrap; }
+  .form-edit .youtube input { flex-basis: 100%; }
+}
+
+/* ---------------------------------------------------------------- ajuste do drop e do gancho */
+
+#dlg-aj { width: min(96vw, 1080px); }
+.aj-corpo { display: grid; grid-template-columns: minmax(240px, 360px) 1fr; gap: 16px; align-items: start; }
+.aj-filme { display: grid; gap: 8px; }
+.aj-filme img { width: 100%; max-height: 56vh; object-fit: contain; background: #000;
+                border: 1px solid var(--borda); border-radius: var(--r-p); }
+.aj-filme input[type=range] { width: 100%; accent-color: var(--rosa); }
+.aj-nav { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+.aj-nav input { width: 9.5em; text-align: center; font-variant-numeric: tabular-nums; }
+.aj-lado { display: grid; gap: 12px; min-width: 0; }
+.aj-marcas { display: grid; gap: 6px; }
+.aj-marca { display: grid; grid-template-columns: 1fr auto auto auto auto; gap: 6px; align-items: center;
+            padding: 6px 8px; border: 1px solid var(--borda); border-radius: var(--r-p); }
+.aj-marca .valor { font-variant-numeric: tabular-nums; color: var(--ciano); min-width: 7.5em; text-align: right; }
+.aj-marca.off { opacity: .45; }
+.aj-marca button { padding: 4px 10px; }
+.aj-modo { display: grid; gap: 4px; }
+.aj-sem { display: flex; gap: 8px; align-items: center; color: var(--tinta-2); }
+.aj-falas { display: grid; gap: 4px; max-height: 24vh; overflow: auto; }
+.aj-fala { text-align: left; background: none; border: 1px solid transparent; padding: 4px 8px; }
+.aj-fala.on { border-color: var(--ciano); background: var(--ciano-fog); }
+.aj-musica { display: grid; gap: 6px; }
+.aj-volume { display: flex; gap: 8px; align-items: center; margin-left: auto; }
+.aj-volume input { width: 160px; accent-color: var(--rosa); }
+.aj-volume output { min-width: 6.5em; font-variant-numeric: tabular-nums; color: var(--ciano); }
+.aj-musica canvas { width: 100%; display: block; cursor: pointer; border: 1px solid var(--borda);
+                    border-radius: var(--r-p); background: var(--noite); }
+#aj-previa { width: min(100%, 300px); justify-self: center; border-radius: var(--r-p); background: #000; }
+@media (max-width: 760px) {
+  .aj-corpo { grid-template-columns: 1fr; }
+  .aj-marca { grid-template-columns: 1fr auto; }
+  .aj-marca .rotulo { grid-column: 1 / -1; }
+}
+
+.aj-abas { display: flex; gap: 6px; border-bottom: 1px solid var(--borda); }
+.aj-abas [role=tab] { border-radius: var(--r-p) var(--r-p) 0 0; border-bottom: none; }
+.aj-abas [role=tab][aria-selected=true] { background: var(--rosa-fog); border-color: var(--rosa); color: #fff; }
+.aj-painel { display: grid; gap: 14px; }
+.aj-geral { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px 16px; }
+@media (max-width: 760px) { .aj-geral { grid-template-columns: 1fr; } }
+.aj-cortes { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; max-height: 52vh; overflow: auto; }
+.aj-corte { display: grid; grid-template-columns: 62px 1fr auto; gap: 10px; align-items: center;
+            padding: 6px 8px; border: 1px solid var(--borda); border-radius: var(--r-p); }
+.aj-corte img { width: 62px; aspect-ratio: 4 / 5; object-fit: cover; background: #000; border-radius: 6px; }
+.aj-corte-info { display: grid; gap: 4px; min-width: 0; }
+.aj-trans { display: flex; gap: 8px; align-items: center; }
+.aj-corte-acoes { display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
+.aj-corte-acoes button { padding: 4px 10px; }
+.aj-escolha { display: grid; gap: 8px; border: 1px solid var(--borda-viva); border-radius: var(--r-p); padding: 10px; }
+.aj-grade { display: grid; grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: 8px;
+            max-height: 40vh; overflow: auto; }
+.aj-op { display: grid; gap: 4px; padding: 4px; background: var(--noite); font-size: 12px; }
+.aj-op img { width: 100%; aspect-ratio: 4 / 5; object-fit: cover; border-radius: 6px; }
+.aj-op.usado { border-color: var(--ouro); }
+.aj-op.atual { border-color: var(--ciano); box-shadow: 0 0 10px var(--ciano-fog); }
+@media (max-width: 760px) {
+  .aj-corte { grid-template-columns: 62px 1fr; }
+  .aj-corte-acoes { grid-column: 1 / -1; justify-content: flex-start; }
+}

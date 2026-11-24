@@ -23,7 +23,7 @@ A aba vem do `#hash` da URL (`abaAtual()`, `mostrarAba()`), e cada uma é uma `<
 | Aba | O que faz | Rotas usadas |
 |---|---|---|
 | **Lives** | escolhe o streamer, lista os VODs, processa um, ajusta o enquadramento, adiciona streamer | `/api/vods`, `/api/processar`, `/api/trabalho`, `/api/enquadrar`, `/api/canais` |
-| **Edits** | formulário do edit de filme (filme, música, tema, trecho, ajustes finos), seletor de arquivos, andamento e cards dos edits feitos (vídeo, título/descrição/hashtags, renderizar de novo, copiar para prontos) | `/api/edit`, `/api/edits`, `/api/arquivos`, `/video-edit/<id>`, `/api/edits/<id>/renderizar\|prontos\|texto`, `/api/trabalho` |
+| **Edits** | formulário do edit de filme (filme, música, tema, trecho, ajustes finos), download do YouTube, seletor de arquivos, andamento e cards dos edits feitos (vídeo, título/descrição/hashtags, ajustar o edit, renderizar de novo, copiar para prontos) | `/api/edit`, `/api/youtube`, `/api/edits`, `/api/arquivos`, `/video-edit/<id>`, `/quadro-edit/<id>`, `/mini-edit/<id>`, `/audio-edit/<id>`, `/api/edits/<id>/linha\|planos\|renderizar\|prontos\|texto\|ajustar\|corte\|desfazer\|previa`, `/api/trabalho` |
 | **Revisão** | cards dos cortes: vídeo, capa, título/descrição/hashtags, IA, aprovar/rejeitar, re-render | `/api/cortes`, `/api/cortes/<id>`, `/video/<id>`, `/capa/<id>`, `/api/legenda/<id>`, `/api/prompt/<id>`, `/api/rerender/<id>`, `/api/publicar` |
 | **Fila** | publicações agendadas: cancelar, tentar de novo, publicar agora | `/api/fila`, `/api/fila/<id>/<acao>` |
 | **Contas** | vincula YouTube/TikTok, contas de simulação, contas padrão por streamer | `/oauth/*`, `/api/contas/*`, `/api/tiktok/<id>/criador` |
@@ -51,11 +51,21 @@ A lógica fica em `cortes/painel_edit.py`. O `painel.py` só roteia.
 |---|---|
 | `GET /api/edits` | lista os edits (`dados/edits/*/*/plano.json`), do mais recente para o mais antigo |
 | `GET /api/arquivos?pasta=&tipo=video\|audio` | conteúdo de uma pasta: subpastas, arquivos de mídia do tipo e atalhos (Início, Vídeos, Músicas, Downloads, Área de trabalho, discos). Sem `pasta`, abre a última usada (`dados/edits/pastas.json`) |
-| `GET /video-edit/<filme>/<edit>` | o `edit.mp4`, com `Range` |
+| `GET /video-edit/<filme>/<edit>` | o `edit.mp4`, com `Range`; com `?previa=1`, a `previa.mp4` do ajuste |
+| `GET /api/edits/<id>/linha` | o que a tela de ajuste desenha: marcas do plano (gancho, `gatilho`, drop), a música (onda em picos de 50 ms, batidas) e as falas do filme |
+| `GET /quadro-edit/<id>?t=&w=` | o quadro do filme no segundo `t`, em jpg, no recorte do edit (sem tarjas), `w` de 120 a 720 px |
+| `GET /audio-edit/<id>` | a música tratada do edit (`musica.wav`), com `Range`, para "Ouvir o drop" |
+| `GET /api/edits/<id>/planos` | os planos do filme que têm miniatura (`id`, `inicio`, `fim`, `brilho`, `usado`), para trocar o plano de um corte |
+| `GET /mini-edit/<id>?cena=` | a miniatura de um plano (do cache `miniaturas_*` do filme) |
 | `POST /api/edit` | valida o formulário (`painel_edit.argumentos`) e dispara `python -m cortes edit ...` com `trabalho.comecar_comando` |
 | `POST /api/edits/<id>/renderizar` | dispara `edit-render` do `plano.json` |
 | `POST /api/edits/<id>/prontos` | copia `edit.mp4` e `edit.txt` para `prontos/` |
 | `POST /api/edits/<id>/texto` | grava título, descrição e hashtags no `plano.json` e reescreve o `edit.txt` |
+| `POST /api/edits/<id>/ajustar` | `{gancho: [ini, fim] \| null, drop_filme, fala_fim, drop_fala, drop_musica, volume_musica, ritmo?, duracao_musica?, transicoes?, abertura?, musica_no_gancho?}`: valida e refaz o plano sem IA (`edit.replanejar`); devolve as marcas novas. Recusado com um trabalho rodando |
+| `POST /api/edits/<id>/corte` | `{op: plano\|deslizar\|transicao\|excluir\|dividir, i, cena?, fonte?, transicao?}`: muda um corte (`edit.editar_corte`) e devolve as marcas. Recusado com um trabalho rodando |
+| `POST /api/edits/<id>/desfazer` | troca `plano.json` e `plano.anterior.json` |
+| `POST /api/edits/<id>/previa` | dispara `edit-render <plano> --previa` (540 px, rápido) |
+| `POST /api/youtube` | `{url, campo: filme\|musica}`: valida o endereço (`youtube.URL`) e dispara `baixar-youtube` (com `--audio` para a música). O estado do trabalho leva `campo` e, no fim, `resultado` (o caminho), que a página põe no campo |
 
 O seletor de arquivos existe porque o navegador não informa o caminho de um arquivo escolhido num
 `<input type=file>` (só o nome), e o comando precisa do caminho completo.
@@ -95,7 +105,10 @@ Como o progresso chega à página:
    o passo, o tempo, a barra e as últimas 14 linhas do log. As duas abas usam a mesma caixa (`htmlTrabalho(t)`), que
    aponta para onde o resultado ficou pelo `tipo` do trabalho (`edit`/`edit-render` → Edits; o resto → Revisão).
 
-`/api/trabalho` → `{"atual": {"titulo", "passo", "rodando", "inicio", "fim", "erro", "progresso", "tipo"?}, "log": [...]}`.
+`/api/trabalho` → `{"atual": {"titulo", "passo", "rodando", "inicio", "fim", "erro", "progresso", "tipo"?, "resultado"?, ...extra}, "log": [...]}`.
+
+`comecar_comando(..., extra={...})` junta campos ao estado, e uma linha `Arquivo: <caminho>` na saída do comando vira
+`resultado`. É assim que um comando devolve algo para a página sem uma rota própria.
 
 ## Como estender
 
