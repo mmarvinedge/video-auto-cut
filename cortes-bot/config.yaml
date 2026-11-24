@@ -113,6 +113,14 @@ canais:
     credito: kick.com/coringa
     facecam: null
 
+  bisteconee:
+    plataforma: twitch
+    login: bisteconee
+    url: https://www.twitch.tv/bisteconee
+    canal_destino: "Cortes do Bistecone"
+    credito: twitch.tv/bisteconee
+    facecam: null   # ajuste pelo botão “Ajustar enquadramento” depois de baixar um trecho
+
 kick_api:
   # Crie um app em https://kick.com/settings/developer e preencha via variáveis de ambiente:
   #   KICK_CLIENT_ID e KICK_CLIENT_SECRET
