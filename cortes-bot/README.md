@@ -55,6 +55,11 @@ O ffmpeg vem junto pelo pacote `imageio-ffmpeg`, sem instalar nada no sistema.
    - `--sem-render` só lista os momentos, sem baixar nem gerar vídeo (bom para calibrar)
    - Ainda dá para baixar o VOD inteiro com `baixar` (cerca de 20 GB em 1080p) e processar o .mp4 completo
 
+**YouTube**: dá para cadastrar um canal pelo endereço com `@` (ex.: `https://www.youtube.com/@alanzoka`,
+botão *+ Novo streamer*). A aba Lives lista as lives já encerradas do canal (aba "Ao vivo" dele) e o resto do
+fluxo é igual. Não há chat gravado do YouTube, então a detecção usa só o áudio e a fala (Whisper). Nos testes o
+YouTube entregou 720p para o yt-dlp, abaixo dos 1080p da Twitch.
+
 O replay do chat de VODs antigos da Twitch não está disponível (a biblioteca `chat-downloader` trava).
 Por isso o chat precisa ser gravado **durante** a live com `chat-twitch`.
 

@@ -1,7 +1,9 @@
-"""Lista e baixa VODs com yt-dlp (Twitch e Kick)."""
+"""Lista e baixa VODs com yt-dlp (Twitch, Kick e lives gravadas do YouTube)."""
 import json
+import re
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 from . import config, hls
@@ -10,7 +12,15 @@ from . import config, hls
 def _url_videos(canal: dict) -> str:
     if canal["plataforma"] == "twitch":
         return f"https://www.twitch.tv/{canal['login']}/videos?filter=archives&sort=time"
+    if canal["plataforma"] == "youtube":
+        return f"https://www.youtube.com/@{canal['login']}/streams"
     return f"https://kick.com/{canal['login']}/videos"
+
+
+def e_youtube(url: str) -> bool:
+    """O YouTube entrega vídeo e áudio em arquivos separados (DASH), não em HLS como a Twitch e o Kick:
+    quem baixa trechos e áudio por aqui é o próprio yt-dlp."""
+    return re.match(r"https://(www\.|m\.)?(youtube\.com|youtu\.be)/", url) is not None
 
 
 def listar(canal: dict, n: int = 5) -> list[dict]:
@@ -20,7 +30,8 @@ def listar(canal: dict, n: int = 5) -> list[dict]:
     # repete a disponibilidade). Ele baixa igual sem isso, e com isso a url não passa na validação
     # do painel: todo VOD do Kick era recusado como "endereço inválido".
     return [{"id": e.get("id"), "titulo": e.get("title"), "duracao": e.get("duration"),
-             "url": limpar_url(e.get("url") or "")} for e in json.loads(out).get("entries", [])]
+             "url": limpar_url(e.get("url") or "")} for e in json.loads(out).get("entries", [])
+            if e.get("live_status") not in ("is_live", "is_upcoming")]
 
 
 def limpar_url(url: str) -> str:
@@ -60,12 +71,15 @@ def _info(url: str, formato: str) -> dict:
 
 def informacoes(url: str, altura_max: int = 1080) -> dict:
     """{"id", "duracao"} do VOD, da mesma memória que o `baixar_trecho` usa."""
-    d = _info(url, f"b[height<={altura_max}]/b")
+    # no YouTube não há formato único com vídeo e áudio juntos: só o id e a duração interessam aqui
+    d = _info(url, "ba" if e_youtube(url) else f"b[height<={altura_max}]/b")
     return {"id": d.get("id") or "", "duracao": float(d.get("duration") or 0.0)}
 
 
 def baixar_audio(url: str, pasta: Path) -> Path:
     """Baixa só o áudio do VOD (~15x menor que 720p) em paralelo. Basta para a detecção."""
+    if e_youtube(url):
+        return _baixar_audio_youtube(url, pasta)
     info = _info(url, "Audio_Only/ba/worst")
     destino = pasta / f"{info['id']}_audio.mp4"
     destino.with_suffix(".info.json").write_text(json.dumps(info, ensure_ascii=False), encoding="utf-8")
@@ -73,11 +87,57 @@ def baixar_audio(url: str, pasta: Path) -> Path:
     return destino
 
 
+def _yt(cmd: list[str], tentativas: int = 3) -> str:
+    """Roda o yt-dlp do YouTube, que de vez em quando falha à toa (rede, limite de pedidos).
+    Se continuar falhando, o erro leva o que o yt-dlp disse, para aparecer no painel."""
+    for n in range(tentativas):
+        r = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", errors="replace")
+        if r.returncode == 0:
+            return r.stdout
+        if n < tentativas - 1:
+            time.sleep(3 * (n + 1))
+    raise RuntimeError("o yt-dlp falhou no YouTube: " + (r.stderr.strip().splitlines() or ["sem detalhes"])[-1])
+
+
+def _baixar_audio_youtube(url: str, pasta: Path) -> Path:
+    info = _info(url, "ba")
+    destino = pasta / f"{info['id']}_audio.mp4"
+    destino.with_suffix(".info.json").write_text(json.dumps(info, ensure_ascii=False), encoding="utf-8")
+    pasta.mkdir(parents=True, exist_ok=True)
+    bruto = pasta / f"{info['id']}_audio_bruto.%(ext)s"
+    cmd = [sys.executable, "-m", "yt_dlp", url, "-f", "ba", "-N", "8", "--ffmpeg-location", config.ffmpeg(),
+           "--no-part", "--newline", "-o", str(bruto), "--print", "after_move:filepath"]
+    arquivo = Path(_yt(cmd).strip().splitlines()[-1])
+    # as etapas seguintes esperam um .mp4: o áudio do YouTube vem em webm/opus, então vira AAC
+    subprocess.run([config.ffmpeg(), "-y", "-v", "error", "-i", str(arquivo), "-vn", "-c:a", "aac",
+                    "-b:a", "96k", str(destino)], check=True, capture_output=True)
+    arquivo.unlink(missing_ok=True)
+    return destino
+
+
 def baixar_trecho(url: str, inicio: float, fim: float, destino: Path, altura_max: int = 1080) -> float:
     """Baixa só os pedaços de vídeo que cobrem [inicio, fim].
     Retorna em que segundo do VOD o arquivo baixado começa (para o corte acertar o tempo)."""
+    if e_youtube(url):
+        return _baixar_trecho_youtube(url, inicio, fim, destino, altura_max)
     info = _info(url, f"b[height<={altura_max}]/b")
     return hls.baixar(info["url"], destino, inicio, fim, progresso=False, memoria=True)
+
+
+def _baixar_trecho_youtube(url: str, inicio: float, fim: float, destino: Path, altura_max: int) -> float:
+    """Com os cortes forçados em quadros-chave, o arquivo começa exatamente em `inicio`."""
+    inicio = max(0.0, inicio)
+    destino.parent.mkdir(parents=True, exist_ok=True)
+    destino.unlink(missing_ok=True)
+    cmd = [sys.executable, "-m", "yt_dlp", url,
+           "-f", f"bv*[height<={altura_max}]+ba/b[height<={altura_max}]/b",
+           "--download-sections", f"*{inicio:.2f}-{fim:.2f}", "--force-keyframes-at-cuts",
+           "--merge-output-format", "mp4", "--ffmpeg-location", config.ffmpeg(), "--no-part",
+           "-o", str(destino.with_suffix(".%(ext)s"))]
+    _yt(cmd)
+    if not destino.exists():
+        raise ValueError("o YouTube não devolveu o trecho pedido")
+    return inicio
 
 
 def inicio_do_trecho(url: str, inicio: float, fim: float, altura_max: int = 1080) -> float:
@@ -88,6 +148,8 @@ def inicio_do_trecho(url: str, inicio: float, fim: float, altura_max: int = 1080
     que anda à frente do tempo do VOD (no bisteconee, ~61 s)."""
     import httpx
 
+    if e_youtube(url):
+        return max(0.0, inicio)   # o trecho do YouTube já começa em `inicio`
     info = _info(url, f"b[height<={altura_max}]/b")
     with httpx.Client(timeout=30, follow_redirects=True) as cliente:
         pedacos = hls.ler_playlist(info["url"], cliente, memoria=True)

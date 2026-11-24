@@ -9,7 +9,7 @@
 <body>
 <header>
   <div class="topo">
-    <h1>Cortes<span class="sub">Vice City</span></h1>
+    <h1>Cortes</h1>
     <nav aria-label="Seções">
       <a href="#lives" data-aba="lives">Lives</a>
       <a href="#edits" data-aba="edits">Edits</a>
@@ -341,7 +341,7 @@
 <dialog id="dlg-arq" aria-labelledby="arq-titulo">
   <div class="dlg">
     <h2 id="arq-titulo">Escolher arquivo</h2>
-    <div class="atalhos" id="arq-atalhos"></div>
+    <div class="arq-atalhos" id="arq-atalhos"></div>
     <form class="linha" id="arq-ir">
       <button type="button" id="arq-subir" aria-label="Pasta de cima">↑</button>
       <input id="arq-pasta" aria-label="Pasta" autocomplete="off">
@@ -351,6 +351,15 @@
     <div class="msg" id="arq-msg" aria-live="polite"></div>
     <div class="rodape"><button type="button" id="arq-fechar">Cancelar</button></div>
   </div>
+</dialog>
+
+<!-- confirmação desenhada pelo próprio painel: o confirm()/alert() do navegador é bloqueado em
+     alguns navegadores embutidos (devolve "Cancelar" na hora, sem mostrar nada) e o botão parecia morto -->
+<dialog id="dlg-pergunta" aria-labelledby="pg-texto">
+  <form method="dialog" class="dlg">
+    <p id="pg-texto" style="margin:0; white-space:pre-line"></p>
+    <menu><button value="nao" id="pg-nao">Cancelar</button><button value="sim" id="pg-sim" class="primario">OK</button></menu>
+  </form>
 </dialog>
 
 <dialog id="dlg-enq" aria-labelledby="enq-titulo">
@@ -400,6 +409,18 @@ async function api(url, corpo) {
   return j;
 }
 
+/** confirm()/alert() do próprio painel. `perguntar` resolve true/false; `avisar` só mostra. */
+function perguntar(msg, soAviso = false) {
+  const d = $("#dlg-pergunta");
+  $("#pg-texto").textContent = msg;
+  $("#pg-nao").hidden = soAviso;
+  d.returnValue = "";
+  d.showModal();
+  $("#pg-sim").focus();
+  return new Promise(ok => d.addEventListener("close", () => ok(d.returnValue === "sim"), { once: true }));
+}
+const avisar = msg => perguntar(msg, true);
+
 function falhaPainel(msg) {
   $("#falha-painel-texto").textContent = msg;
   $("#falha-painel").hidden = false;
@@ -432,6 +453,13 @@ async function carregarCortes() {
   desenharCortes();
 }
 
+// Revisão = lista à esquerda + o corte escolhido aberto à direita (o mesmo .card de sempre,
+// então salvar, capa, IA, aprovar e rejeitar seguem pelos mesmos handlers).
+// Quando o escolhido sai do filtro (ex.: rejeitado com o filtro em "Pendentes"), a seleção fica
+// na mesma posição da lista — ou seja, pula para o próximo, que é o que se quer numa revisão.
+let selId = null, selPos = 0;
+const ST_CORTE = { pendente: "Pendente", aprovado: "Aprovado", rejeitado: "Rejeitado" };
+
 function desenharCortes() {
   const canal = $("#canal").value, formato = $("#formato").value;
   const base = cortes.filter(c => (!canal || c.canal === canal) && (!formato || c.formato === formato));
@@ -445,10 +473,54 @@ function desenharCortes() {
   }
   const n = s => base.filter(c => c.status === s).length;
   $("#contagem").textContent = `${n("pendente")} pendentes · ${n("aprovado")} aprovados · ${base.filter(agendado).length} agendados · ${n("rejeitado")} rejeitados`;
-  $("#lista").innerHTML = vis.length ? vis.map(card).join("") : filtroStatus === "agendado"
-    ? '<p class="vazio">Nada agendado. Aprove um corte e agende a publicação dele.</p>'
-    : '<p class="vazio">Nenhum corte aqui. Rode <code>python -m cortes processar …</code> para gerar.</p>';
+  if (!vis.length) {
+    $("#lista").innerHTML = filtroStatus === "agendado"
+      ? '<p class="vazio">Nada agendado. Aprove um corte e agende a publicação dele.</p>'
+      : '<p class="vazio">Nenhum corte aqui. Rode <code>python -m cortes processar …</code> para gerar.</p>';
+    return;
+  }
+  if (!vis.some(c => c.id === selId)) selId = vis[Math.min(selPos, vis.length - 1)].id;
+  selPos = vis.findIndex(c => c.id === selId);
+  $("#lista").innerHTML = `<div class="revisao">
+    <div class="lista-cortes" role="listbox" aria-label="Cortes">${vis.map(itemLista).join("")}
+      <div class="atalhos" aria-hidden="true"><span class="kbd">J</span><span class="kbd">K</span> navegar · <span class="kbd">A</span> aprovar · <span class="kbd">R</span> rejeitar</div></div>
+    ${card(vis[selPos])}</div>`;
 }
+
+function itemLista(c) {
+  return `<div class="item" role="option" data-sel="${esc(c.id)}" aria-selected="${c.id === selId}">
+    <img src="/capa/${encodeURI(c.id)}?t=${c.capa_t ?? 0}" alt="" loading="lazy">
+    <div><div class="t ${c.titulo ? "" : "sem"}">${esc(c.titulo || "Sem título")}</div>
+      <div class="m">${esc(c.canal)} · ${hhmmss(c.inicio)} · ${c.duracao}s</div></div>
+    <span class="st st-${c.status}">${ST_CORTE[c.status] || esc(c.status)}</span></div>`;
+}
+
+// trocar de corte só troca o detalhe e a marcação da lista: redesenhar a lista inteira
+// pediria de novo cada capa, e cada capa é um ffmpeg (o /capa responde sem cache)
+function selecionar(id) {
+  const c = cortes.find(x => x.id === id), atual = $("#lista .card");
+  if (!c || id === selId || !atual) return;
+  selId = id;
+  const itens = [...document.querySelectorAll("#lista .item")];
+  itens.forEach(i => i.setAttribute("aria-selected", i.dataset.sel === id));
+  selPos = itens.findIndex(i => i.dataset.sel === id);
+  atual.outerHTML = card(c);
+  itens[selPos]?.scrollIntoView({ block: "nearest" });
+}
+
+// atalhos da revisão — desligados enquanto se digita, no player ou com uma janela aberta.
+// Só letras: as setas continuam rolando a página e controlando o volume do vídeo.
+document.addEventListener("keydown", e => {
+  if (abaAtual() !== "revisao" || e.ctrlKey || e.metaKey || e.altKey) return;
+  if (e.target.closest("input, textarea, select, video, [contenteditable]") || document.querySelector("dialog[open]")) return;
+  const el = $("#lista .card"); if (!el) return;
+  const ids = [...document.querySelectorAll("#lista .item")].map(i => i.dataset.sel), i = ids.indexOf(selId);
+  const k = e.key.toLowerCase();
+  if (k === "j") { e.preventDefault(); selecionar(ids[Math.min(i + 1, ids.length - 1)]); }
+  else if (k === "k") { e.preventDefault(); selecionar(ids[Math.max(i - 1, 0)]); }
+  else if (k === "a") { e.preventDefault(); abrirPublicar(el); }
+  else if (k === "r") { e.preventDefault(); $(".rejeitar", el).click(); }
+});
 
 function pubsHtml(c) {
   if (!c.publicacoes.length) return "";
@@ -481,7 +553,8 @@ function card(c) {
         <span>${hhmmss(c.inicio)} · ${c.duracao}s</span>
         ${c.largura ? `<span>${c.largura}×${c.altura}</span>` : ""}
         <span>${mb(c.bytes)}</span>
-        ${c.nota_ia != null ? `<span class="badge">IA ${c.nota_ia}/10</span>` : ""}</div>
+        ${c.nota_ia != null ? `<span class="badge">IA ${c.nota_ia}/10</span>` : ""}
+        <span class="st st-${c.status}" style="margin-left:auto">${ST_CORTE[c.status] || esc(c.status)}</span></div>
       <label class="campo"><span class="rotulo">Título <b class="conta-letras">${(c.titulo||"").length}/100</b></span>
         <input class="titulo" maxlength="100" placeholder="O que acontece no corte" value="${esc(c.titulo)}" aria-label="Título"></label>
       <label class="campo"><span class="rotulo">Descrição</span>
@@ -497,8 +570,8 @@ function card(c) {
       ${c.texto ? `<details><summary>Transcrição</summary>${esc(c.texto)}</details>` : ""}
       ${pubsHtml(c)}
       <div class="acoes">
-        <button class="aprovar" aria-pressed="${c.status === "aprovado"}">${c.status === "aprovado" ? "Publicar em mais contas" : "Aprovar…"}</button>
-        <button class="rejeitar" aria-pressed="${c.status === "rejeitado"}">Rejeitar</button>
+        <button class="rejeitar" aria-keyshortcuts="R" aria-pressed="${c.status === "rejeitado"}">${c.status === "rejeitado" ? "Desfazer rejeição" : "Rejeitar"}<span class="kbd" aria-hidden="true">R</span></button>
+        <button class="aprovar" aria-keyshortcuts="A" aria-pressed="${c.status === "aprovado"}">${c.status === "aprovado" ? "Publicar em mais contas" : "Aprovar…"}<span class="kbd" aria-hidden="true">A</span></button>
       </div>
       <div class="salvo" aria-live="polite"></div>
     </div></article>`;
@@ -672,8 +745,14 @@ function camposDoCard(el) {
 
 async function salvar(el, mudancas) {
   const c = cortes.find(x => x.id === el.dataset.id);
+  // aplica antes de esperar o servidor: trocar de corte redesenha o card a partir de `cortes`,
+  // e um título recém-digitado não pode voltar desatualizado (e ir assim no próximo salvar)
+  const antes = Object.fromEntries(Object.keys(mudancas).map(k => [k, c[k]]));
+  Object.assign(c, mudancas);
   const r = await api("/api/cortes/" + encodeURI(el.dataset.id), mudancas);
-  if (r.ok) Object.assign(c, mudancas);
+  if (!r.ok) Object.assign(c, antes);
+  const t = document.querySelector(`.item[data-sel="${CSS.escape(c.id)}"] .t`);
+  if (t) { t.textContent = c.titulo || "Sem título"; t.classList.toggle("sem", !c.titulo); }
   $(".salvo", el).textContent = r.ok ? "Salvo" : "Erro ao salvar";
   return r.ok;
 }
@@ -741,9 +820,11 @@ document.addEventListener("change", e => {
 });
 
 document.addEventListener("click", async e => {
+  const it = e.target.closest(".item[data-sel]");
+  if (it) return selecionar(it.dataset.sel);
   const el = e.target.closest(".card");
-  if (el && e.target.matches(".aprovar")) return abrirPublicar(el);
-  if (el && e.target.matches(".rejeitar")) {
+  if (el && e.target.closest(".aprovar")) return abrirPublicar(el);
+  if (el && e.target.closest(".rejeitar")) {
     const c = cortes.find(x => x.id === el.dataset.id);
     if (await salvar(el, { status: c.status === "rejeitado" ? "pendente" : "rejeitado", ...camposDoCard(el) })) setTimeout(desenharCortes, 300);
   }
@@ -925,7 +1006,7 @@ $("#fila").addEventListener("click", async e => {
   const b = e.target.closest("button[data-acao]"); if (!b) return;
   b.disabled = true;
   const r = await api(`/api/fila/${b.dataset.id}/${b.dataset.acao}`, {});
-  if (!r.ok) alert(r.erro);
+  if (!r.ok) avisar(r.erro);
   desenharFila();
 });
 setInterval(() => { if (abaAtual() === "fila" && !document.hidden) desenharFila(); }, 8000);
@@ -978,7 +1059,7 @@ $("#contas").addEventListener("click", async e => {
   }
   if (e.target.matches(".remover")) {
     const el = e.target.closest(".conta");
-    if (!confirm("Remover esta conta? Os itens já agendados nela vão falhar.")) return;
+    if (!await perguntar("Remover esta conta? Os itens já agendados nela vão falhar.")) return;
     await api(`/api/contas/${el.dataset.id}/remover`, {});
     E = await api("/api/estado"); desenharContas();
   }
@@ -1101,14 +1182,14 @@ $("#lv-lista").addEventListener("click", async e => {
     if (r.ok) abrirOficina(r.url, "live inteira · 3 momentos");
     return;
   }
-  if (!confirm(`Processar "${b.dataset.titulo || b.dataset.url}"?
+  if (!await perguntar(`Processar "${b.dataset.titulo || b.dataset.url}"?
 
 Baixa o áudio da live inteira e gera os cortes. Pode levar bastante tempo.`)) return;
   b.disabled = true;
   const opcoes = [...document.querySelectorAll("#aba-lives .opcoes input:checked")].map(i => i.value);
   const r = await api("/api/processar", { canal: $("#lv-canal").value, url: b.dataset.url, titulo: b.dataset.titulo, opcoes });
   b.disabled = false;
-  if (!r.ok) { alert(r.erro); return; }
+  if (!r.ok) { avisar(r.erro); return; }
   verTrabalho();
 });
 
@@ -1374,19 +1455,19 @@ function desenharOnda() {
     const c = cv.getContext("2d"), estilo = getComputedStyle(document.documentElement);
     c.clearRect(0, 0, w, h);
     const x = t => (t - ini) / (fim - ini) * w;
-    c.fillStyle = estilo.getPropertyValue("--borda-viva").trim() || "#5a2f9e";
+    c.fillStyle = estilo.getPropertyValue("--borda-2").trim() || "#3D3D43";
     for (let px = 0; px < w; px++) {
       const t = ini + px / w * (fim - ini), i = Math.floor(t / mus.passo);
       const v = (mus.onda[i] || 0) / 100 * (h - 4);
       c.fillRect(px, (h - v) / 2, 1, Math.max(1, v));
     }
     if (comBatidas) {           // as batidas: linhas finas por cima da onda (o drop sempre cai numa)
-      c.fillStyle = estilo.getPropertyValue("--ciano").trim() || "#22e3ff";
+      c.fillStyle = estilo.getPropertyValue("--info").trim() || "#7BA4F5";
       c.globalAlpha = 0.45;
       for (const b of mus.batidas) if (b >= ini && b <= fim) c.fillRect(Math.round(x(b)), 0, 1, h);
       c.globalAlpha = 1;
     }
-    c.fillStyle = estilo.getPropertyValue("--rosa").trim() || "#ff2d95";
+    c.fillStyle = estilo.getPropertyValue("--pend").trim() || "#E3B05B";
     c.fillRect(Math.round(x(drop)) - 1, 0, 3, h);
   };
   pinta($("#aj-onda-toda"), 0, mus.duracao, false);
@@ -1470,8 +1551,8 @@ async function esperarPrevia() {
 }
 
 $("#aj-aplicar").addEventListener("click", async () => {
-  if (AJ.d?.plano.cortes_editados && !confirm("Ajustar o drop e o gancho monta os cortes de novo: as mudanças feitas "
-      + "na aba Cortes se perdem. Continuar?")) return;
+  if (AJ.d?.plano.cortes_editados && !await perguntar("Ajustar o drop e o gancho monta os cortes de novo: as mudanças "
+      + "feitas na aba Cortes se perdem. Continuar?")) return;
   const pedido = pedidoAjuste();
   if (typeof pedido === "string") { $("#aj-msg").textContent = pedido; return; }
   $("#aj-aplicar").disabled = true;
@@ -1644,5 +1725,6 @@ $("#arq-fechar").addEventListener("click", () => $("#dlg-arq").close());
 
 mostrarAba();
 </script>
+
 </body>
 </html>

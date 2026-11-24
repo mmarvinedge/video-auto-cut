@@ -63,6 +63,19 @@ whisper:
     - cade
     - eita
     - vixe
+  pausas:                  # falas de saída/volta da live: tiram nota (até 2 contam). Sem acento, como as reações.
+    - vou almocar
+    - vou comer
+    - ja volto
+    - volto ja
+    - voltei
+    - vou no banheiro
+    - vou mijar
+    - vou ali rapidinho
+  peso_pausa: 2.0          # quanto cada uma tira da nota da fala
+
+painel:
+  gravar_chat: true        # o painel grava o chat da Twitch enquanto está aberto (ele já precisa ficar aberto para publicar)
 
 ia:
   ativo: true              # precisa de ANTHROPIC_API_KEY; sem ela o bot segue sem esta etapa
@@ -119,6 +132,9 @@ canais:
     # Recorte da facecam no vídeo original (pixels, em 1920x1080).
     # Deixe null até medir; sem facecam o corte usa fundo desfocado.
     facecam: {x: 1489, y: 271, w: 420, h: 268}   # medido no VOD 2932200023 (canto sup. direito, sem a barra do "último sub")
+    # Cores do degradê da faixa da legenda (esquerda → direita), 2+ cores "#RRGGBB".
+    # Sem esta linha, a faixa é preta. Só vale com facecam: sem ela não há faixa (é o fundo desfocado).
+    faixa_cores: ["#FF9E3D", "#F2508A", "#8E3FC2"]   # pôr do sol do GTA VI: laranja → rosa → roxo
 
   paulinholokobr:
     plataforma: kick

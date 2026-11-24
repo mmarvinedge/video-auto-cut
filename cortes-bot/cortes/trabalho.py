@@ -131,7 +131,7 @@ def comecar(nome_canal: str, url: str, titulo: str = "", opcoes: list[str] | Non
     """Dispara o trabalho. Levanta RuntimeError se já tiver um rodando."""
     global _atual
     url = vod.limpar_url(url)   # tira o "#__youtubedl_smuggle=..." que o yt-dlp põe nas do Kick
-    if not re.fullmatch(r"https://(www\.)?(twitch\.tv|kick\.com)/[\w./-]+", url):
+    if not re.fullmatch(r"https://(www\.|m\.)?(twitch\.tv|kick\.com|youtube\.com|youtu\.be)/[\w./?=&-]+", url):
         raise ValueError("endereço de VOD inválido")
     permitidas = {"--sem-render", "--sem-whisper", "--sem-ia", "--sem-tiktok"}
     opcoes = [o for o in (opcoes or []) if o in permitidas]
