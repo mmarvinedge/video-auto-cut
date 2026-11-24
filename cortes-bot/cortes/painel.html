@@ -28,6 +28,7 @@
     <div class="filtros" role="group" aria-label="Status">
       <button data-s="pendente" aria-pressed="true">Pendentes</button>
       <button data-s="aprovado" aria-pressed="false">Aprovados</button>
+      <button data-s="agendado" aria-pressed="false">Agendados</button>
       <button data-s="rejeitado" aria-pressed="false">Rejeitados</button>
       <button data-s="" aria-pressed="false">Todos</button>
     </div>
@@ -221,11 +222,19 @@ async function carregarCortes() {
 function desenharCortes() {
   const canal = $("#canal").value, formato = $("#formato").value;
   const base = cortes.filter(c => (!canal || c.canal === canal) && (!formato || c.formato === formato));
-  const vis = base.filter(c => !filtroStatus || c.status === filtroStatus);
+  // "agendado" não é status do corte, e sim de uma publicação dele que ainda vai sair na fila
+  const agendado = c => c.publicacoes.some(p => p.status === "agendado");
+  const passa = c => !filtroStatus || (filtroStatus === "agendado" ? agendado(c) : c.status === filtroStatus);
+  const vis = base.filter(passa);
+  if (filtroStatus === "agendado") {   // o próximo a sair primeiro
+    const proximo = c => Math.min(...c.publicacoes.filter(p => p.status === "agendado").map(p => Date.parse(p.quando)));
+    vis.sort((a, b) => proximo(a) - proximo(b));
+  }
   const n = s => base.filter(c => c.status === s).length;
-  $("#contagem").textContent = `${n("pendente")} pendentes · ${n("aprovado")} aprovados · ${n("rejeitado")} rejeitados`;
-  $("#lista").innerHTML = vis.length ? vis.map(card).join("") :
-    '<p class="vazio">Nenhum corte aqui. Rode <code>python -m cortes processar …</code> para gerar.</p>';
+  $("#contagem").textContent = `${n("pendente")} pendentes · ${n("aprovado")} aprovados · ${base.filter(agendado).length} agendados · ${n("rejeitado")} rejeitados`;
+  $("#lista").innerHTML = vis.length ? vis.map(card).join("") : filtroStatus === "agendado"
+    ? '<p class="vazio">Nada agendado. Aprove um corte e agende a publicação dele.</p>'
+    : '<p class="vazio">Nenhum corte aqui. Rode <code>python -m cortes processar …</code> para gerar.</p>';
 }
 
 function pubsHtml(c) {
