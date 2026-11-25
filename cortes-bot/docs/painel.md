@@ -11,7 +11,8 @@ Painel web local em **http://localhost:8800**, o lugar onde o usuário trabalha 
 Como subir:
 - `python -m cortes painel` (com terminal);
 - `iniciar_painel.pyw` sobe escondido, sem janela, e a saída vai para `dados/painel.log`. Use `--instalar`/`--remover`
-  para pôr ou tirar da inicialização do Windows, `--reiniciar` depois de um `git pull` e `--parar` para desligar;
+  para pôr ou tirar da inicialização do Windows, `--reiniciar` depois de um `git pull` e `--parar` para desligar.
+  Sem a `ANTHROPIC_API_KEY` no ambiente de quem o abriu, ele a lê das variáveis do usuário (veja edits.md);
 - no Claude Code: `.claude/launch.json` tem a configuração `painel` para o preview e a `painel-teste`, uma segunda
   cópia na porta **8801** com `trabalhador=False` (sem a fila de publicação). Use a de teste enquanto o painel de
   verdade estiver aberto na 8800, para não ter dois trabalhadores de fila publicando ao mesmo tempo.
@@ -22,14 +23,14 @@ A aba vem do `#hash` da URL (`abaAtual()`, `mostrarAba()`), e cada uma é uma `<
 
 | Aba | O que faz | Rotas usadas |
 |---|---|---|
-| **Lives** | escolhe o streamer, lista os VODs, processa um, ajusta o enquadramento, adiciona streamer | `/api/vods`, `/api/processar`, `/api/trabalho`, `/api/enquadrar`, `/api/canais` |
-| **Edits** | formulário do edit de filme (filme e música do computador ou do YouTube, tema, trecho, ajustes finos), seletor de arquivos, andamento e cards dos edits feitos (vídeo, título/descrição/hashtags, ajustar o edit, renderizar de novo, copiar para prontos) | `/api/edit`, `/api/edits`, `/api/arquivos`, `/video-edit/<id>`, `/quadro-edit/<id>`, `/mini-edit/<id>`, `/audio-edit/<id>`, `/api/edits/<id>/linha\|planos\|renderizar\|prontos\|texto\|ajustar\|corte\|desfazer\|previa`, `/api/trabalho` |
+| **Lives** | escolhe o streamer, lista os VODs (com a data da live e "já processada"), processa um, ajusta o enquadramento, adiciona streamer | `/api/vods`, `/api/processar`, `/api/trabalho`, `/api/enquadrar`, `/api/canais` |
+| **Edits** | formulário do edit de filme (filme e música do computador ou do YouTube, tema, modelo, trecho, ajustes finos), seletor de arquivos, galeria de modelos com prévia, andamento e cards dos edits feitos (vídeo, título/descrição/hashtags, ajustar o edit, renderizar de novo, copiar para prontos) | `/api/edit`, `/api/edits`, `/api/arquivos`, `/video-edit/<id>`, `/quadro-edit/<id>`, `/mini-edit/<id>`, `/audio-edit/<id>`, `/previa-modelo/<id>`, `/api/edits/<id>/linha\|planos\|renderizar\|prontos\|texto\|ajustar\|corte\|desfazer\|previa`, `/api/trabalho` |
 | **Revisão** | cards dos cortes: vídeo, capa, título/descrição/hashtags, IA, aprovar/rejeitar, re-render | `/api/cortes`, `/api/cortes/<id>`, `/video/<id>`, `/capa/<id>`, `/api/legenda/<id>`, `/api/prompt/<id>`, `/api/rerender/<id>`, `/api/publicar` |
 | **Fila** | publicações agendadas: cancelar, tentar de novo, publicar agora | `/api/fila`, `/api/fila/<id>/<acao>` |
 | **Contas** | vincula YouTube/TikTok, contas de simulação, contas padrão por streamer | `/oauth/*`, `/api/contas/*`, `/api/tiktok/<id>/criador` |
 
 `/api/estado` devolve o que a página precisa saber do servidor (canais, contas, se há IA, horários, os padrões do
-`edit:` do config) e é
+`edit:` do config, os modelos de edit) e é
 chamado a cada troca de aba, na variável global `E` do JS.
 
 ## Rotas
@@ -53,6 +54,7 @@ A lógica fica em `cortes/painel_edit.py`. O `painel.py` só roteia.
 | `GET /api/arquivos?pasta=&tipo=video\|audio` | conteúdo de uma pasta: subpastas, arquivos de mídia do tipo e atalhos (Início, Vídeos, Músicas, Downloads, Área de trabalho, discos). Sem `pasta`, abre a última usada (`dados/edits/pastas.json`) |
 | `GET /video-edit/<filme>/<edit>` | o `edit.mp4`, com `Range`; com `?previa=1`, a `previa.mp4` do ajuste |
 | `GET /api/edits/<id>/linha` | o que a tela de ajuste desenha: marcas do plano (gancho, `gatilho`, drop), a música (onda em picos de 50 ms, batidas) e as falas do filme |
+| `GET /previa-modelo/<id>.mp4` | a prévia de um modelo de edit (`padrao` = sem modelo), feita na hora na primeira vez (`modelos.previa`, 5 a 25 s) e guardada em `dados/modelos/` |
 | `GET /quadro-edit/<id>?t=&w=` | o quadro do filme no segundo `t`, em jpg, no recorte do edit (sem tarjas), `w` de 120 a 720 px |
 | `GET /audio-edit/<id>` | a música tratada do edit (`musica.wav`), com `Range`, para "Ouvir o drop" |
 | `GET /api/edits/<id>/planos` | os planos do filme que têm miniatura (`id`, `inicio`, `fim`, `brilho`, `usado`), para trocar o plano de um corte |

@@ -42,7 +42,9 @@ def gerar_filme(destino: Path) -> None:
     subprocess.run([config.ffmpeg(), "-y", "-v", "error", *entradas,
                     "-f", "lavfi", "-i", f"sine=frequency=300:duration={n * TROCA}",
                     "-filter_complex", f"{rotulos}concat=n={n}:v=1:a=0,"
-                    f"drawtext=fontfile='{cenas.FONTE}':text='%{{pts\\:hms}}':fontsize=90:x=500:y=300[v]",
+                    f"drawtext=fontfile='{cenas.FONTE}':text='%{{pts\\:hms}}':fontsize=90:x=500:y=300,"
+                    # textura e grão, como numa imagem filmada: cor lisa parada é cartela (cenas.eh_cartela)
+                    "drawgrid=w=64:h=48:t=6:c=0x808080@0.6,noise=alls=10:allf=t[v]",
                     "-map", "[v]", "-map", f"{n}:a", "-c:v", "libx264", "-preset", "ultrafast",
                     "-c:a", "aac", "-shortest", str(destino)], check=True)
 
@@ -238,11 +240,14 @@ def main():
     q = np.frombuffer(bruto, np.uint8).reshape(-1, 112, 64).astype(np.float32)
     dif = np.r_[0, np.abs(np.diff(q, axis=0)).mean(axis=(1, 2))]
     for c in cortes:
-        if c["transicao"] in ("fusao", "flash"):
-            continue
         k = round(c["saida"] * edit.FPS)
+        if c["transicao"] == "rolo":        # o de antes terminou de enrolar: sobrou o preto
+            assert q[k - 1].mean() < 8, (c, q[k - 3:k + 1].mean(axis=(1, 2)).round(1))
+            continue
+        if c["transicao"] in ("fusao", "flash", "moldura"):      # graduais (a moldura sai do branco)
+            continue
         assert dif[k] == dif[k - 2:k + 3].max() and dif[k] > 15, (c, dif[k - 3:k + 4].round(1))
-    print(f"ok  cortes na batida: {sum(c['transicao'] not in ('fusao', 'flash') for c in cortes)} conferidos")
+    print(f"ok  cortes na batida: {sum(c['transicao'] not in ('fusao', 'flash', 'moldura') for c in cortes)} conferidos")
 
     # música muda no gancho: as duas versões diferem só antes do drop (a música baixinha que uma
     # tem e a outra não); depois do drop o som é o mesmo
@@ -474,5 +479,45 @@ def main():
     print(f"ok  abertura com falas {a_dur:.1f}s + gancho {g4_dur:.1f}s + fala no drop + ritmo rápido = {p4['duracao']:.1f}s")
 
 
+def teste_casos_reais():
+    """Regressões medidas num edit real que falhou (trailer de Vingadores 5 + uma mixagem de funk de
+    5,6 min + Skrillex): cartelas do fim do trailer na preparação e drop fora do lugar."""
+    # cartelas: a tela de data e o logo do canal do trailer; planos filmados parados não são
+    tela_data = {"inicio": 182.2, "fim": 193.64, "mov": 0.0012, "textura": 5.0, "liso": 0.24}
+    logo = {"inicio": 195.2, "fim": 215.23, "mov": 0.0003, "textura": 0.0, "liso": 0.86}
+    dialogo = {"inicio": 47.1, "fim": 53.8, "mov": 0.0019, "textura": 1.0, "liso": 0.74}
+    close_parado = {"inicio": 10.0, "fim": 15.5, "mov": 0.0002, "textura": 3.0, "liso": 0.3}
+    curto = {"inicio": 3.0, "fim": 5.0, "mov": 0.0002, "textura": 4.0, "liso": 0.4}
+    assert cenas.eh_cartela(tela_data) and cenas.eh_cartela(logo)
+    assert not any(cenas.eh_cartela(c) for c in (dialogo, close_parado, curto))
+    cs = [dict(c, id=i, brilho=0.3) for i, c in enumerate([tela_data, logo, dialogo, close_parado, curto])]
+    assert [c["id"] for c in cenas.candidatas(cs, 1.0, 50)] == [2, 3, 4]
+
+    # drop pelo grave (dB por batida). Funk: respiro, volta pela metade, pancada solta, volta cheia
+    bt = np.arange(200) * 0.627
+    funk = np.full(200, 25.0)
+    funk[80:88] = -20                     # respiro
+    funk[88:93] = 8                       # o grave volta pela metade
+    funk[93], funk[94], funk[95] = 16, 22, 6      # sobe e dá uma pancada solta antes da volta
+    funk[96:] = [22, 29, 23, 25] * 26     # a volta cheia, oscilando como no funk
+    gr = 10 ** (funk / 20)
+    i = batidas.achar_drop(gr, bt, antes=40, depois=15)
+    assert i == 96, (i, bt[i])
+    # o mesmo drop repetido: vale o primeiro, não o maior por décimos de dB
+    rep = np.full(200, -20.0)
+    for ini, nivel in ((30, 20.0), (90, 20.4), (150, 20.2)):
+        rep[ini:ini + 40] = nivel
+    i = batidas.achar_drop(10 ** (rep / 20), bt, antes=5, depois=15)
+    assert i == 30, i
+    # fim de videoclipe: o volume total sobe, mas o grave não. Pelo grave, o drop fica no começo
+    clipe = np.full(200, -30.0)
+    clipe[40:] = 26
+    clipe[180:] = -60                     # a música acaba; o barulho do clipe não tem grave
+    assert batidas.achar_drop(10 ** (clipe / 20), bt, antes=5, depois=15) == 40
+    assert batidas.subida_db(10 ** (clipe / 20), 40) > batidas.DROP_CLARO_DB
+    print("ok  casos reais: cartelas do trailer fora, planos parados dentro; drop pelo grave (volta cheia, o primeiro)")
+
+
 if __name__ == "__main__":
+    teste_casos_reais()
     main()

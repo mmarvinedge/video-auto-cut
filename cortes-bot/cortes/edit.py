@@ -18,7 +18,7 @@ from pathlib import Path
 
 import numpy as np
 
-from . import batidas, cenas, config, legendas, render
+from . import batidas, cenas, config, efeitos, legendas, render
 
 FPS = 30
 PADRAO = {
@@ -29,7 +29,8 @@ PADRAO = {
     "velocidade": 0.85,          # câmera lenta dos planos da música (1 = normal)
     "proporcao": "4:5",          # 4:5 com tarjas pretas (o visual dos edits) | 9:16 tela cheia
     "idioma": "pt",              # da fala do filme, para o Whisper: pt, en, es... ou auto
-    "slowed": 0.85, "reverb": True,
+    "slowed": 1.0,               # 1 = música original; 0,85 = o "slowed" do TikTok
+    "reverb": True,              # só junto com o slowed: com a música original, ela fica limpa
     "volume_gancho": 0.18,       # a música começa baixinha debaixo da fala
     "musica_no_gancho": True,    # False: muda até o drop, que entra de uma vez (mais impacto)
     "volume_musica": 1.0,        # sobre o nível padrão da música (-15 dB RMS): 0.5 = metade, 1.3 = mais alta
@@ -41,6 +42,19 @@ PADRAO = {
     "max_planos_ia": 150,
     "cor": {"contraste": 1.12, "saturacao": 0.78, "brilho": -0.03, "vinheta": True, "grao": 3},
     "transicoes": ["zoom", "flash", "chicote", "giro", "fusao"],   # [] = corte seco
+    "transicao_drop": "flash",   # como o drop entra (o Honorable usa o rolo)
+    "fim_preto": 0.4,            # segundos escurecendo no fim
+    "modelo": None,              # id do modelo de edit (modelos/<id>.yaml), posto por modelos.aplicar
+    "letreiro": None,            # do modelo: as falas viram letreiro palavra por palavra (veja modelos.py)
+    "rampa": 0.0,                # 0 = câmera lenta constante; 0,85 = cada corte rápido-lento-rápido (velocity)
+    "borrao_movimento": False,   # borrão de movimento nas partes rápidas (mistura de quadros a 240 fps)
+    "zoom_cortes": True,         # False: sem o soco de zoom e a tremida nos cortes da música
+    "preferir_movimento": False, # planos que se mexem primeiro (a rampa não aparece num plano parado)
+    "preparacao": 0.0,           # segundos de planos lentos antes do drop, com a música subindo (0 = sem)
+    "inicio_preto": 0.0,         # segundos saindo do preto no começo
+    "dica_ia": "",               # o estilo do modelo, dito à IA ao escolher gancho e planos
+    "destaque": None,            # do modelo: legenda em duas camadas com degradê (veja modelos.DESTAQUE)
+    "texto_editor": False,       # a IA escreve 2 a 5 palavras de impacto, uma por batida depois do drop
 }
 
 # Transições entre os planos (o campo "transicao" de cada corte diz como se entra nele):
@@ -50,7 +64,17 @@ PADRAO = {
 #   giro     o que entra chega girado, apertado e desfocado e se endireita
 #   fusao    os dois planos se misturam (8 quadros); só em cortes longos
 #   corte    corte seco (o soco de zoom do plano continua valendo)
-TRANSICOES = ("zoom", "flash", "chicote", "giro", "fusao", "corte")
+#   rolo     o trecho que sai enrola para a esquerda como um rolo de papel; o que entra chega no zoom
+#   moldura  uma moldura branca pisca com o plano que entra dentro dela, crescendo; ele sai do branco
+#   mergulho o que sai escurece, um risco de luz cruza o preto e o que entra sai do preto
+#   flash_seco um quadro só todo branco na batida, sem fade (o estouro do raio)
+TRANSICOES = ("zoom", "flash", "chicote", "giro", "fusao", "corte", "rolo", "moldura", "mergulho", "flash_seco")
+MERGULHO = 6                     # quadros escurecendo e quadros clareando no mergulho
+RISCO = 3                        # quadros do risco de luz no começo do plano que entra
+# rolo e moldura mexem no fim do trecho anterior: aparecem de tempos em tempos, depois de um corte
+# longo o bastante (a cada quantos cortes, em qual deles)
+ESPECIAIS = {"moldura": (6, 3), "rolo": (7, 5)}
+DUR_ANTES_ESPECIAL = 0.55        # a moldura ocupa 0,5 s do fim do corte de antes
 # Duração de cada corte por ritmo (min, max), em segundos; "normal" usa corte_min/corte_max do config
 RITMOS = {"rapido": (0.25, 0.75), "lento": (1.4, 3.2)}
 FALA_DROP_MAX = 8.0             # a fala em cima do drop não passa disso
@@ -155,6 +179,17 @@ def analisar_filme(filme: Path, pasta: Path, trecho: tuple[float, float] | None,
     if cs is None:
         aviso(f"Procurando os cortes de câmera ({(fim - ini) / 60:.0f} min de filme)...")
         cs = cenas.detectar(filme, ini, fim, tarja_=tarja)
+        _gravar_json(arq_cenas, cs)
+    elif cs and "mov" not in cs[0]:
+        # cache de antes do movimento (que acha as cartelas e serve aos modelos com rampa): mede de
+        # novo, uma vez, e guarda o brilho que já estava medido
+        aviso(f"Medindo o movimento de cada plano ({(fim - ini) / 60:.0f} min de filme, uma vez)...")
+        velhos = {(c["inicio"], c["fim"]): c for c in cs}
+        cs = cenas.detectar(filme, ini, fim, tarja_=tarja)
+        for c in cs:
+            v = velhos.get((c["inicio"], c["fim"]))
+            if v and "brilho" in v:
+                c["brilho"] = v["brilho"]
         _gravar_json(arq_cenas, cs)
     aviso(f"  {len(cs)} planos")
 
@@ -289,27 +324,41 @@ def _efeito(i: int) -> dict:
     return {"zoom": "soco" if i % 2 == 0 else "empurra", "tremer": i % 4 == 0}
 
 
-def _transicao(i: int, dur: float, permitidas: list[str], cabe_fusao: bool) -> str:
-    """Como se entra no corte i. O drop entra no flash; a fusão só em corte longo (num corte
-    rápido ela embola os dois planos); o resto alterna, com o zoom como base, como nos edits."""
+def _transicao(i: int, dur: float, permitidas: list[str], cabe_fusao: bool, dur_antes: float = 0.0,
+               drop: str = "flash") -> str:
+    """Como se entra no corte i. O drop entra no flash (ou na `drop` do modelo); a fusão só em corte
+    longo (num corte rápido ela embola os dois planos); rolo e moldura de tempos em tempos, depois
+    de um corte longo; o resto alterna, com o zoom como base, como nos edits."""
     ok = [t for t in permitidas if t in TRANSICOES]
     if not ok:
         return "corte"
     if i == 0:
+        if drop in TRANSICOES and drop != "flash":
+            return drop
         return "flash" if "flash" in ok else ok[0]
     if "fusao" in ok and cabe_fusao and dur >= 1.0 and i % 3 == 0:
         return "fusao"
+    for t, (cada, em) in ESPECIAIS.items():
+        if t in ok and dur_antes >= DUR_ANTES_ESPECIAL and i % cada == em:
+            return t
     if "flash" in ok and i % 8 == 0:
         return "flash"
+    if "flash_seco" in ok and i % 6 == 3:
+        return "flash_seco"
+    if "mergulho" in ok and dur_antes >= 0.4 and i % 9 == 6:
+        return "mergulho"
     ciclo = ([t for t in ("zoom", "chicote", "zoom", "giro") if t in ok]
-             or [t for t in ok if t not in ("fusao", "flash")] or ok)
+             or [t for t in ok if t not in ("fusao", "flash", "flash_seco", "mergulho", *ESPECIAIS)] or ok)
+    if "corte" in ok and ciclo and ciclo[0] != "corte":   # o modelo pede corte seco: ele é a base
+        ciclo = ["corte", ciclo[0], "corte"]
     return ciclo[i % len(ciclo)]
 
 
 def montar_cortes(pontos: list[float], drop: float, gancho_dur: float, escolhidos: list[dict],
                   vel: float, transicoes: list[str] | None = None,
                   ocupado: tuple[float, float] | None = None,
-                  primeiro: tuple | None = None, usados: dict | None = None) -> list[dict]:
+                  primeiro: tuple | None = None, usados: dict | None = None,
+                  drop_trans: str = "flash") -> list[dict]:
     """Casa cada intervalo entre batidas com um plano. Plano curto demais para a câmera lenta
     pedida fica mais lento (até 0,5x); se nem assim couber, passa para o próximo da lista.
 
@@ -343,7 +392,8 @@ def montar_cortes(pontos: list[float], drop: float, gancho_dur: float, escolhido
             fonte = dur * v0
             usados.setdefault(c["id"], []).append((ini_fonte, ini_fonte + fonte))
             # o momento já é o impacto (o estalo tem o próprio clarão): entra no zoom, não no flash
-            trans = "zoom" if "zoom" in transicoes else _transicao(0, dur, transicoes, False)
+            trans = (drop_trans if drop_trans != "flash" else
+                     "zoom" if "zoom" in transicoes else _transicao(0, dur, transicoes, False))
             cortes.append({"cena": c["id"], "fonte": round(ini_fonte, 3), "dur": round(dur, 3),
                            "vel": round(v0, 3), "saida": round(gancho_dur + a - drop, 3), **_efeito(0),
                            "transicao": trans})
@@ -368,9 +418,51 @@ def montar_cortes(pontos: list[float], drop: float, gancho_dur: float, escolhido
         cabe = i > 0 and sobra >= FUSAO / FPS * cortes[-1]["vel"] + 0.02
         cortes.append({"cena": c["id"], "fonte": round(ini_fonte, 3), "dur": round(dur, 3),
                        "vel": round(v, 3), "saida": round(gancho_dur + a - drop, 3), **_efeito(i),
-                       "transicao": _transicao(i, dur, transicoes, cabe)})
+                       "transicao": _transicao(i, dur, transicoes, cabe, cortes[-1]["dur"] if cortes else 0.0,
+                                               drop_trans)})
         sobra = j1 + 0.1 - (ini_fonte + fonte)
     return cortes
+
+
+VEL_PREPARACAO = 0.5            # câmera lenta dos planos da preparação
+
+
+def _pontos_preparacao(bt: list[float], t_drop: float, segundos: float) -> list[float]:
+    """As batidas da preparação: começa na batida mais perto de `segundos` antes do drop e troca de
+    plano na batida do meio (dois planos). Menos de 1,5 s de música antes do drop: sem preparação."""
+    if segundos <= 0:
+        return []
+    antes = [b for b in bt if b < t_drop - 0.5]
+    if not antes:
+        return []
+    ini = min(antes, key=lambda b: abs(b - (t_drop - segundos)))
+    if t_drop - ini < 1.5:
+        return []
+    meio = min((b for b in antes if b > ini + 0.5), key=lambda b: abs(b - (ini + t_drop) / 2), default=None)
+    return [ini, meio, t_drop] if meio and t_drop - meio > 0.5 else [ini, t_drop]
+
+
+def _acabar_preparacao(prep: list[dict], cenas_: dict) -> None:
+    """Os planos da preparação aproximam devagar, sem tremida; o primeiro entra seco e o segundo se
+    mistura com ele (fusão) quando o primeiro tem filme sobrando."""
+    for i, c in enumerate(prep):
+        c.update(zoom="empurra", tremer=False, transicao="corte")
+        if i > 0:
+            ant = prep[i - 1]
+            sobra = cenas_[ant["cena"]]["fim"] - (ant["fonte"] + ant["dur"] * ant["vel"])
+            if sobra >= FUSAO / FPS * ant["vel"] + 0.02:
+                c["transicao"] = "fusao"
+
+
+def _por_movimento(ids: list[int], por_id: dict) -> list[int]:
+    """Os planos que se mexem primeiro (na ordem que já tinham); os mais parados (abaixo do 35º
+    percentil do `mov`) vão para o fim da fila. Planos sem `mov` (cache antigo) ficam onde estão."""
+    movs = [por_id[i]["mov"] for i in ids if por_id[i].get("mov") is not None]
+    if len(movs) < 4:
+        return ids
+    limite = float(np.percentile(movs, 35))
+    parados = {i for i in ids if por_id[i].get("mov") is not None and por_id[i]["mov"] < limite}
+    return [i for i in ids if i not in parados] + [i for i in ids if i in parados]
 
 
 def _n_cortes(mus: dict, duracao: float, ce: dict) -> int:
@@ -399,7 +491,8 @@ def planejar(filme: Path, musica: Path, cfg: dict, tema: str = "", trecho=None, 
 
     # 1. música: trata (slowed/reverb) e acha as batidas
     aviso("Preparando a música...")
-    wav = batidas.preparar(musica, pasta / "musica.wav", ce["slowed"], ce["reverb"])
+    wav = batidas.preparar(musica, pasta / "musica.wav", ce["slowed"],
+                           bool(ce["reverb"]) and float(ce["slowed"] or 1) < 0.999)
     mus = batidas.analisar(wav)
     aviso(f"  {mus['bpm']} BPM, {len(mus['batidas'])} batidas, {mus['duracao']:.0f}s")
 
@@ -501,12 +594,21 @@ def _montar_plano(ctx: dict, gancho_manual, drop, duracao, drop_filme, fala_drop
 
     # 4. drop e pontos de corte
     bt, en = np.array(mus["batidas"]), np.array(mus["energia"])
+    if "grave" not in mus:      # batidas.json de antes do grave: mede agora (o drop é o grave voltando)
+        mus["grave"] = batidas.grave_por_batida(batidas.carregar(Path(wav)), bt).round(6).tolist()
+    gr = np.array(mus["grave"])
     if drop is not None:
         i_drop = int(np.argmin(np.abs(bt - drop)))
     else:
-        i_drop = batidas.achar_drop(en, bt, antes=max(min(g_dur, 8), 4), depois=dur_musica)
+        i_drop = batidas.achar_drop(gr, bt, antes=max(min(g_dur, 8), 4) + (ce["preparacao"] or 0), depois=dur_musica)
     t_drop = float(bt[i_drop])
+    subida = batidas.subida_db(gr, i_drop)
+    if drop is None and subida < batidas.DROP_CLARO_DB:
+        aviso(f"  a música não tem um drop claro (o grave sobe só {subida:.1f} dB aos {t_drop:.0f}s): os cortes começam "
+              "numa volta de seção. Para escolher outro ponto, use Ajustar o edit > Drop e gancho")
     pontos = batidas.cortes_na_batida(mus["batidas"], t_drop, dur_musica, c_min, c_max)
+    pontos_prep = _pontos_preparacao(list(bt), t_drop, float(ce["preparacao"] or 0))
+    p_dur = round(pontos_prep[-1] - pontos_prep[0], 4) if pontos_prep else 0.0
 
     # fala em cima do drop: o primeiro corte dura a frase inteira (juntando batidas), na velocidade 1
     fala_fim = None
@@ -528,6 +630,8 @@ def _montar_plano(ctx: dict, gancho_manual, drop, duracao, drop_filme, fala_drop
     ids += [i for i in _planos_heuristicos([c for c in pre if c["id"] not in ids
                                             and not (c["inicio"] < g["fim"] and c["fim"] > g["inicio"])],
                                            len(pontos) + 6) if i not in ids]      # reserva
+    if ce["preferir_movimento"]:
+        ids = _por_movimento(ids, por_id)
     primeiro = None
     if drop_filme is not None:
         cena_drop = next((c for c in cs if c["inicio"] <= drop_filme < c["fim"]), None)
@@ -547,10 +651,32 @@ def _montar_plano(ctx: dict, gancho_manual, drop, duracao, drop_filme, fala_drop
         for c in cs:
             if c["inicio"] < f["fim"] and c["fim"] > f["inicio"]:
                 usados.setdefault(c["id"], []).append((f["inicio"], f["fim"]))
-    cortes = montar_cortes(pontos, t_drop, a_dur + g_dur, [por_id[i] for i in ids], ce["velocidade"],
-                           list(ce["transicoes"] or []), (g["inicio"], g["inicio"] + g_dur) if g_dur else None,
-                           primeiro, usados)
-    if drop_filme is not None and cortes and "zoom" in (ce["transicoes"] or []):
+    ocupado = (g["inicio"], g["inicio"] + g_dur) if g_dur else None
+    preparacao = []
+    if pontos_prep:
+        # planos lentos antes do drop: os primeiros da escolha (a IA põe os melhores na frente) que
+        # cabem na câmera lenta. Não os mais compridos: num trailer, os mais compridos são as
+        # cartelas do fim (data de estreia, logo do canal)
+        precisa = (pontos_prep[1] - pontos_prep[0]) * VEL_PREPARACAO + 0.3
+        longos = [por_id[i] for i in ids if (not primeiro or i != primeiro[0]["id"])
+                  and por_id[i]["fim"] - por_id[i]["inicio"] >= precisa and not cenas.eh_cartela(por_id[i])][:8]
+        try:
+            preparacao = montar_cortes(pontos_prep, pontos_prep[0], a_dur + g_dur, longos, VEL_PREPARACAO,
+                                       ["corte"], ocupado, None, usados, "corte")
+        except RuntimeError:            # nenhum plano longo o bastante para a câmera lenta
+            aviso("  sem planos longos para a preparação: o drop vem direto depois do gancho")
+            preparacao, p_dur = [], 0.0
+        _acabar_preparacao(preparacao, {c["id"]: c for c in longos})
+        ids = [i for i in ids if i not in {c["cena"] for c in preparacao}]
+    cortes = montar_cortes(pontos, t_drop, a_dur + g_dur + p_dur, [por_id[i] for i in ids], ce["velocidade"],
+                           list(ce["transicoes"] or []), ocupado, primeiro, usados, ce.get("transicao_drop") or "flash")
+    for c in cortes:
+        if ce["rampa"] and not (fala_fim and c is cortes[0]):     # a fala do drop fica na velocidade 1
+            c["rampa"] = round(float(ce["rampa"]), 3)
+        if not ce["zoom_cortes"]:
+            c.update(zoom="nenhum", tremer=False)
+    if (drop_filme is not None and cortes and "zoom" in (ce["transicoes"] or [])
+            and (ce.get("transicao_drop") or "flash") == "flash"):
         cortes[0]["transicao"] = "zoom"     # drop num momento do filme: sem o branco do flash
 
     gatilho["modo"] = drop_fala
@@ -558,16 +684,18 @@ def _montar_plano(ctx: dict, gancho_manual, drop, duracao, drop_filme, fala_drop
         "filme": str(filme.resolve()), "musica_original": str(musica.resolve()),
         "tema": tema, "analise": ctx.get("analise"), "config": ce, "gatilho": gatilho,
         "musica": config.relativo(wav), "bpm": mus["bpm"],
-        "drop": round(t_drop, 3), "musica_inicio": round(t_drop - g_dur, 3), "tarja": tarja,
+        "drop": round(t_drop, 3), "drop_subida_db": round(subida, 1), "musica_inicio": round(t_drop - g_dur - p_dur, 3), "tarja": tarja,
         "drop_filme": round(drop_filme, 3) if drop_filme is not None else None,
-        "ritmo": ritmo, "drop_fala": drop_fala,
+        "ritmo": ritmo, "drop_fala": drop_fala, "modelo": ce.get("modelo"),
         "abertura_falas": falas_ab, "abertura_dur": a_dur,
         "fala_drop": {"inicio": round(drop_filme, 3), "fim": round(fala_fim, 3),
                       "palavras": [p for p in palavras if drop_filme - 0.15 <= p["s"] < fala_fim]}
         if fala_fim else None,
+        "texto_editor": _texto_editor(ctx, ce, cortes, fala_fim),
         "gancho": {"inicio": g["inicio"], "fim": round(g["inicio"] + g_dur, 3), "palavras": g["palavras"]},
+        "preparacao": preparacao, "preparacao_dur": p_dur,
         "cortes": cortes,
-        "duracao": round(a_dur + g_dur + pontos[-1] - t_drop, 3),
+        "duracao": round(a_dur + g_dur + p_dur + pontos[-1] - t_drop, 3),
         "titulo": escolha_ia.titulo if escolha_ia else f"{filme.stem} edit",
         "descricao": escolha_ia.descricao if escolha_ia else "",
         "hashtags": (["edit"] + [h.strip("#").lower().replace(" ", "") for h in escolha_ia.hashtags])[:5]
@@ -575,11 +703,29 @@ def _montar_plano(ctx: dict, gancho_manual, drop, duracao, drop_filme, fala_drop
         "ia": escolha_ia.model_dump() if escolha_ia else None,
         "estilo": {k: ce[k] for k in ("proporcao", "volume_gancho", "musica_no_gancho", "volume_musica",
                                       "legenda_cor", "legenda_clara",
-                                      "legenda_y", "cor")},
+                                      "legenda_y", "cor", "fim_preto", "letreiro", "inicio_preto",
+                                      "borrao_movimento", "destaque")},
     }
-    aviso(f"Plano: {f'abertura {a_dur:.1f}s + ' if a_dur else ''}gancho {g_dur:.1f}s + {len(cortes)} cortes "
+    aviso(f"Plano: {f'abertura {a_dur:.1f}s + ' if a_dur else ''}gancho {g_dur:.1f}s + "
+          f"{f'preparação {p_dur:.1f}s + ' if p_dur else ''}{len(cortes)} cortes "
           f"na batida ({ritmo}) = {plano['duracao']:.1f}s")
     return plano
+
+
+def _texto_editor(ctx: dict, ce: dict, cortes: list[dict], fala_fim) -> list[dict]:
+    """As palavras do texto do editor no tempo do vídeo: uma por corte, a partir do drop (a IA as
+    escreve quando o modelo pede; a prévia traz as suas). Com uma fala em cima do drop, começa
+    depois dela, para não cobrir a legenda."""
+    if not ce.get("texto_editor"):
+        return []
+    ia = ctx.get("ia")
+    palavras = [str(w).strip() for w in (ctx.get("texto_editor") or (ia.texto_editor if ia else []) or [])
+                if str(w).strip()][:5]
+    saida, cs = [], [c for c in cortes if not fala_fim or c["saida"] >= cortes[0]["saida"] + cortes[0]["dur"] - 0.01]
+    for k, (w, c) in enumerate(zip(palavras, cs)):
+        fim = cs[k + 1]["saida"] if k + 1 < len(palavras) and k + 1 < len(cs) else c["saida"] + c["dur"]
+        saida.append({"w": w, "s": round(c["saida"], 3), "e": round(fim, 3)})
+    return saida
 
 
 def _mais_novo(pasta: Path, padrao: str) -> Path | None:
@@ -618,7 +764,8 @@ def replanejar(arq_plano: Path, ajuste: dict, aviso=print) -> dict:
         ia = ia.model_copy(update={"drop_no_filme": None, "fala_drop_fim": None, "drop_na_fala": None,
                                    "duracao_musica": None, "ritmo": None})
     g = velho["gancho"]
-    dur_musica = velho["duracao"] - (velho.get("abertura_dur") or 0) - (g["fim"] - g["inicio"])
+    dur_musica = (velho["duracao"] - (velho.get("abertura_dur") or 0) - (velho.get("preparacao_dur") or 0)
+                  - (g["fim"] - g["inicio"]))
     gancho = ajuste.get("gancho")
     gancho_manual = (float(gancho[0]), float(gancho[1])) if gancho else "nenhum"
     ctx = {"filme": Path(velho["filme"]), "musica": Path(velho.get("musica_original") or velho["filme"]),
@@ -793,6 +940,7 @@ def _transicao_do(c: dict | None) -> str:
 # segundos da cabeça, zoom extra, giro (rad) e borrão (gblur em sigma, chicote em pixels de rastro).
 CABECA = {"zoom": (0.27, 0.30, 0, 14), "flash": (0.25, 0.12, 0, 8), "chicote": (0.22, 0.30, 0, 60),
           "giro": (0.30, 0.42, 0.22, 12)}
+CABECA_DE = {"rolo": "zoom", "moldura": "flash"}
 RABO = {"zoom": (4, 0.28, 0, 12), "flash": (4, 0.25, 0, 8), "chicote": (4, 0.30, 0, 60),
         "giro": (4, 0.30, -0.14, 10)}       # o rabo é em quadros: os últimos N do plano que sai
 
@@ -814,14 +962,41 @@ def _rampa(filtro: str, valores: list[float], quadros: list[int]) -> str:
     return ",".join(filtro.format(v) + f":enable='eq(n,{q})'" for v, q in zip(valores, quadros) if v > 0.3)
 
 
+RAMPA_FORMA = 1.2      # a velocidade cai das pontas ao meio em V (1 = reta; maior = mais tempo lento)
+
+
+def _curva_rampa(dur: float, fonte: float, forca: float, pedacos: int = 24) -> str:
+    """O `setpts` da rampa de velocidade: `fonte` segundos de filme viram `dur` segundos, com a
+    velocidade, no tempo de saída, em V: máxima nas pontas e `1 - forca` dela no meio (0,85 -> o
+    meio anda a 15% da velocidade das pontas). Como no velocity edit, a parte rápida dura vários
+    quadros, não um. O setpts precisa do inverso (tempo de saída em função do tempo do filme):
+    vai como uma reta por pedaço, em `if` encadeados."""
+    u = np.linspace(0, 1, 401)
+    v = (1 - forca) + forca * np.abs(1 - 2 * u) ** RAMPA_FORMA
+    x = np.r_[0, np.cumsum((v[1:] + v[:-1]) / 2 * np.diff(u))]
+    x = x / x[-1] * fonte                            # segundos de filme em cada instante da saída
+    ks = np.linspace(0, len(u) - 1, pedacos + 1).round().astype(int)
+    xs, us = x[ks], u[ks] * dur
+    incl = [(us[i + 1] - us[i]) / (xs[i + 1] - xs[i]) for i in range(pedacos)]
+    expr = f"{us[-2]:.5f}+(ld(0)-{xs[-2]:.5f})*{incl[-1]:.5f}"      # depois do fim (fusão): a última reta
+    for i in range(pedacos - 2, -1, -1):
+        expr = f"if(lt(ld(0),{xs[i + 1]:.5f}),{us[i]:.5f}+(ld(0)-{xs[i]:.5f})*{incl[i]:.5f},{expr})"
+    return f"st(0,T-STARTT);({expr})/TB"
+
+
 def _filtro_plano(entrada: str, saida: str, rec: str, alto: tuple[int, int], quadros: int, vel: float,
-                  zoom: str, tremer: bool, entra: str = "corte", sai: str = "corte", lado: int = 1) -> str:
+                  zoom: str, tremer: bool, entra: str = "corte", sai: str = "corte", lado: int = 1,
+                  rampa: float = 0.0, borrao: bool = False) -> str:
     """Um plano pronto para emendar: câmera lenta, recorte, zoom com a transição de entrada
     (`entra`) na cabeça e a de saída (`sai`) no rabo. Com `sai == "fusao"` o plano sai FUSAO
     quadros mais comprido, para se misturar com o seguinte."""
     W2, H2 = alto
     w, h = W2 // 2, H2 // 2
     escala = w / 1080               # borrões medidos no 1080: a prévia (540) usa a metade
+    # rolo e moldura: o fim do trecho que sai é feito por fora (efeitos.py); quem entra chega no
+    # zoom (rolo) ou saindo do branco (moldura)
+    entra = CABECA_DE.get(entra, entra)
+    sai = "corte" if sai in CABECA_DE else sai
     if sai in RABO and quadros < RABO[sai][0] + 2:   # plano curtíssimo: o rabo passaria do começo
         sai = "corte"
     dur = quadros / FPS
@@ -841,7 +1016,18 @@ def _filtro_plano(entrada: str, saida: str, rec: str, alto: tuple[int, int], qua
     if sai == "chicote":
         dx += f"+({lado})*{folga}*{rab}"
 
-    f = f"[{entrada}]setpts=(PTS-STARTPTS)/{vel:.4f},fps={FPS},{rec},scale={W2}:{H2}:flags=bicubic"
+    if rampa:   # velocity: rápido nas pontas, lento no meio (o filme usado continua com dur * vel segundos)
+        f = f"[{entrada}]setpts='{_curva_rampa(dur, dur * vel, rampa)}'"
+    else:
+        f = f"[{entrada}]setpts=(PTS-STARTPTS)/{vel:.4f}"
+    if borrao and (rampa or vel > 1.05):
+        # borrão de movimento: o filme vai a 240 fps misturando os quadros vizinhos (`framerate`) e cada
+        # quadro final junta 8 deles: onde o filme corre, sai rastro; no lento, a mistura tira o tranco
+        # de quadro repetido (fica um leve fantasma, como a "mistura de quadros" dos editores)
+        f += (f",{rec},framerate=fps={FPS * 8}:interp_start=0:interp_end=255:scene=100,"
+              f"tmix=frames=8,fps={FPS},scale={W2}:{H2}:flags=bicubic")
+    else:
+        f += f",fps={FPS},{rec},scale={W2}:{H2}:flags=bicubic"
     # giro: roda antes do zoompan, e o zoom extra (maior que o necessário) esconde os cantos
     giro = []
     if entra == "giro":
@@ -876,17 +1062,38 @@ def _filtro_plano(entrada: str, saida: str, rec: str, alto: tuple[int, int], qua
         f += f",fade=t=in:st=0:d={CABECA['flash'][0]}:color=white"
     if sai == "flash":
         f += f",fade=t=out:st={dur - 3 / FPS:.4f}:d={3 / FPS:.4f}:color=white"
+    if entra == "flash_seco":           # um quadro todo branco, sem fade
+        f += ",drawbox=x=0:y=0:w=iw:h=ih:color=white:t=fill:enable='eq(n,0)'"
+    if entra == "mergulho":             # sai do preto, com um risco de luz cruzando o preto no começo
+        f += (f",fade=t=in:st={RISCO / FPS:.4f}:d={MERGULHO / FPS:.4f},"
+              f"drawbox=x=iw*0.08:y=ih/2-{max(1, round(2 * escala))}:w=iw*0.84:h={max(2, round(4 * escala))}:"
+              f"color=white@0.95:t=fill:enable='lt(n,{RISCO})',"
+              f"gblur=sigma={6 * escala:.1f}:sigmaV={1.5 * escala:.1f}:enable='lt(n,{RISCO})'")
+    if sai == "mergulho":
+        f += f",fade=t=out:st={dur - MERGULHO / FPS:.4f}:d={MERGULHO / FPS:.4f}"
     return f + f",format=yuv420p,settb=AVTB[{saida}]"
 
 
+# balanço de cor: frio (o padrão dos edits), quente (sombras azuladas e luz alaranjada, o do Honorable), neutro
+BALANCO = {"frio": "colorbalance=rs=-0.04:bs=0.06:rh=0.04:bh=-0.03",
+           "quente": "colorbalance=rs=-0.03:bs=0.05:rh=0.07:gh=0.02:bh=-0.06", "neutro": ""}
+
+
 def _cor(c: dict) -> str:
-    f = (f"eq=contrast={c['contraste']}:saturation={c['saturacao']}:brightness={c['brilho']},"
-         "colorbalance=rs=-0.04:bs=0.06:rh=0.04:bh=-0.03")
+    f = f"eq=contrast={c['contraste']}:saturation={c['saturacao']}:brightness={c['brilho']}"
+    if bal := BALANCO.get(c.get("balanco") or "frio", BALANCO["frio"]):
+        f += "," + bal
     if c.get("vinheta"):
         f += ",vignette=angle=PI/4.5"
     if c.get("grao"):
         f += f",noise=alls={int(c['grao'])}:allf=t"
     return f
+
+
+def modelos_destaque() -> dict:
+    """O padrão da legenda em destaque (para o texto do editor de um modelo que não a liga)."""
+    from .modelos import DESTAQUE
+    return dict(DESTAQUE)
 
 
 def _ganho_musica(musica: str, drop: float, dur: float, volume: float = 1.0) -> float:
@@ -928,35 +1135,72 @@ def renderizar(arq_plano: Path, destino: Path | None = None, progresso=None, pre
     a_dur = a_q / FPS
     cortes = plano["cortes"]
     fala_drop = plano.get("fala_drop")
-    t_drop = a_q / FPS + g_dur                            # onde o drop cai no vídeo
+    prep = plano.get("preparacao") or []                  # planos lentos antes do drop (planos antigos: nenhum)
+    p_q = round((plano.get("preparacao_dur") or 0) * FPS) if prep else 0
+    t_prep = (a_q + g_q) / FPS                            # onde a preparação começa
+    t_drop = (a_q + g_q + p_q) / FPS                      # onde o drop cai no vídeo
 
-    # a linha do tempo: as falas da abertura, o gancho e os cortes da música. Fala e gancho são
-    # trechos do filme com som, na velocidade 1 (dict com "inicio"/"fim"); corte tem "fonte"
-    trechos = list(abertura) + ([g] if tem_gancho else []) + list(cortes)
+    # a linha do tempo: as falas da abertura, o gancho, a preparação e os cortes da música. Fala e
+    # gancho são trechos do filme com som, na velocidade 1 (dict com "inicio"/"fim"); corte tem "fonte"
+    trechos = list(abertura) + ([g] if tem_gancho else []) + list(prep) + list(cortes)
     inicios = ([sum(a_qs[:k]) for k in range(len(abertura))] + ([a_q] if tem_gancho else [])
-               + [round(c["saida"] * FPS) for c in cortes])
+               + [round(c["saida"] * FPS) for c in prep] + [round(c["saida"] * FPS) for c in cortes])
+    n_antes = len(abertura) + (1 if tem_gancho else 0)
+    if prep:
+        inicios[n_antes] = a_q + g_q                       # a preparação começa colada no gancho
     if cortes:
-        inicios[len(abertura) + (1 if tem_gancho else 0)] = a_q + g_q     # o drop cai no quadro exato
+        inicios[n_antes + len(prep)] = a_q + g_q + p_q     # o drop cai no quadro exato
     bordas = inicios + [round(total * FPS)]
     entra = [_transicao_do(c) if "fonte" in c else "corte" for c in trechos]
+    for k, t in enumerate(entra):           # rolo e moldura precisam de um trecho antes, longo o bastante
+        if t in efeitos.QUADROS and (k == 0 or bordas[k] - bordas[k - 1] < efeitos.QUADROS[t] + 2):
+            entra[k] = CABECA_DE[t]
     sai = lambda k: entra[k + 1] if k + 1 < len(trechos) else "corte"
+    letreiro = est.get("letreiro")          # do modelo: as falas viram letreiro sobre o preto
+    escala = W / 1080
+    arqs_letreiro = []
 
     entradas, filtros, rotulos = [], [], []
     com_som = []                        # (entrada, início no vídeo, duração) dos trechos com som do filme
     for k, c in enumerate(trechos):
         e = sum(1 for x in entradas if x == "-i")          # índice desta entrada
         quadros = bordas[k + 1] - bordas[k]
+        atual = f"p{k}"
         if "fonte" not in c:
             dur_t = quadros / FPS
             entradas += ["-ss", f"{c['inicio']:.3f}", "-t", f"{dur_t + 0.5:.3f}", "-i", filme]
-            filtros.append(_filtro_plano(f"{e}:v", f"v{k}", rec, alto, quadros, 1.0,
+            filtros.append(_filtro_plano(f"{e}:v", atual, rec, alto, quadros, 1.0,
                                          f"1.0+0.06*min(1,it/{dur_t:.3f})", False, "corte", sai(k), 1))
             com_som.append((e, bordas[k] / FPS, dur_t))
+            if letreiro:                # o cartão do letreiro por cima, menos nos relâmpagos
+                locais = [dict(p, s=p["s"] - c["inicio"], e=p["e"] - c["inicio"]) for p in c["palavras"]]
+                telas, janelas, relampagos = legendas.telas_letreiro(locais, dur_t, letreiro)
+                ass_l = legendas.gerar_ass_letreiro(telas, janelas, pasta / f"letreiro_{k}.ass", letreiro,
+                                                       round(1080 * H / W))
+                if ass_l:
+                    arqs_letreiro.append(ass_l)
+                    filtros.extend(efeitos.letreiro(f"l{k}", ass_l.name, W, H, dur_t, letreiro, escala))
+                    filtros.append(f"[{atual}][l{k}]overlay=eof_action=pass:"
+                                   f"enable='{efeitos.sem_letreiro(relampagos)}'[c{k}]")
+                    atual = f"c{k}"
         else:
             entradas += ["-ss", f"{c['fonte']:.3f}", "-t", f"{c['dur'] * c['vel'] + 0.4:.3f}", "-an", "-i", filme]
-            filtros.append(_filtro_plano(f"{e}:v", f"v{k}", rec, alto, quadros, c["vel"],
+            filtros.append(_filtro_plano(f"{e}:v", atual, rec, alto, quadros, c["vel"],
                                          _zoom(c["zoom"], c["dur"]), c["tremer"], entra[k], sai(k),
-                                         1 if k % 2 else -1))
+                                         1 if k % 2 else -1, c.get("rampa") or 0.0,
+                                         bool(est.get("borrao_movimento"))))
+        if sai(k) == "rolo":
+            filtros.extend(efeitos.rolo(atual, f"r{k}", quadros, W, H))
+            atual = f"r{k}"
+        elif sai(k) == "moldura":       # o plano seguinte, num quadro só, para piscar dentro da moldura
+            seg = trechos[k + 1]
+            m = sum(1 for x in entradas if x == "-i")
+            entradas += ["-ss", f"{seg['fonte']:.3f}", "-t", "0.2", "-an", "-i", filme]
+            filtros.append(f"[{m}:v]trim=end_frame=1,setpts=PTS-STARTPTS,{rec},scale={W}:{H}:flags=bicubic,"
+                           f"setsar=1,format=yuv420p[q{k}]")
+            filtros.extend(efeitos.moldura(atual, f"q{k}", f"m{k}", quadros, W, H))
+            atual = f"m{k}"
+        filtros.append(f"[{atual}]format=yuv420p,settb=AVTB[v{k}]")
         rotulos.append(f"v{k}")
 
     # emenda: concat nos cortes, xfade na fusão (o plano anterior veio FUSAO quadros mais longo
@@ -980,18 +1224,33 @@ def renderizar(arq_plano: Path, destino: Path | None = None, progresso=None, pre
     # legenda: as falas da abertura, do gancho e a fala em cima do drop, no tempo do vídeo
     leg_palavras = []
     for k, c in enumerate(trechos):
-        if "fonte" not in c:
+        if "fonte" not in c and not letreiro:       # com letreiro, as falas já estão nele
             leg_palavras += [dict(p, s=p["s"] - c["inicio"] + bordas[k] / FPS, e=p["e"] - c["inicio"] + bordas[k] / FPS)
                              for p in c["palavras"] if p["s"] < c["inicio"] + (bordas[k + 1] - bordas[k]) / FPS]
     if fala_drop:
         leg_palavras += [dict(p, s=p["s"] - fala_drop["inicio"] + t_drop, e=p["e"] - fala_drop["inicio"] + t_drop)
                          for p in fala_drop["palavras"]]
-    ass = legendas.gerar_ass_edit(leg_palavras, 0.0, total, pasta / "gancho.ass",
-                                  est["legenda_y"], est["legenda_cor"], est["legenda_clara"])
+    destaque, editor = est.get("destaque"), plano.get("texto_editor") or []
+    if destaque or editor:              # do modelo: duas camadas com degradê, e o texto do editor
+        alto_ass = round(1080 * H / W)
+        topo_ass = (1920 - alto_ass) / 2
+        ass = legendas.gerar_ass_destaque(leg_palavras, editor, pasta / "gancho.ass",
+                                          destaque or modelos_destaque(),
+                                          round(topo_ass + alto_ass * (destaque or modelos_destaque())["altura"]),
+                                          round(topo_ass + alto_ass * 0.5))
+    else:
+        ass = legendas.gerar_ass_edit(leg_palavras, 0.0, total, pasta / "gancho.ass",
+                                      est["legenda_y"], est["legenda_cor"], est["legenda_clara"])
     pad = f",pad={LARG}:{ALT}:0:(oh-ih)/2:black" if H < ALT else ""
+    # a cada palavra nova do texto do editor, um quadro preto atrás dela (a piscada na batida)
+    piscadas = "+".join(f"between(t,{p['s'] - 0.5 / FPS:.4f},{p['s'] + 0.5 / FPS:.4f})" for p in editor[1:])
+    pisca = f",drawbox=x=0:y=0:w=iw:h=ih:color=black:t=fill:enable='{piscadas}'" if piscadas else ""
     leg = f",subtitles=filename={ass.name}" if ass else ""
-    fim = f",fade=t=out:st={max(0, total - FIM_PRETO):.3f}:d={FIM_PRETO}"
-    filtros.append(f"[{atual}]{_cor(est['cor'])}{fim}{pad}{leg},format=yuv420p[v]")
+    fim_preto = est.get("fim_preto") or FIM_PRETO
+    fim = f",fade=t=out:st={max(0, total - fim_preto):.3f}:d={fim_preto}"
+    if est.get("inicio_preto"):        # o começo saindo do preto
+        fim = f",fade=t=in:st=0:d={float(est['inicio_preto']):.3f}" + fim
+    filtros.append(f"[{atual}]{_cor(est['cor'])}{fim}{pisca}{pad}{leg},format=yuv420p[v]")
 
     # áudio. Música: começa `musica_inicio` antes do drop, baixinha debaixo da fala; se o drop vem cedo
     # demais, entra com atraso. Com `musica_no_gancho: false` ou com abertura, a música só entra no
@@ -1000,9 +1259,9 @@ def renderizar(arq_plano: Path, destino: Path | None = None, progresso=None, pre
     vg = est["volume_gancho"]
     sons = []
     no_drop = bool(abertura) or (tem_gancho and not est.get("musica_no_gancho", True))
-    if no_drop:
-        ini_mus, atraso = plano["drop"], t_drop
-        volume = f"afade=t=in:st={t_drop:.3f}:d=0.015,"          # 15 ms só para não estalar
+    if no_drop:         # com preparação, a música entra no começo dela (a subida antes do drop)
+        ini_mus, atraso = plano["drop"] - p_q / FPS, t_prep
+        volume = f"afade=t=in:st={t_prep:.3f}:d=0.015,"          # 15 ms só para não estalar
     else:
         ini_mus, atraso = plano["musica_inicio"], 0.0
         if ini_mus < 0:
@@ -1072,6 +1331,8 @@ def renderizar(arq_plano: Path, destino: Path | None = None, progresso=None, pre
     finally:
         tmp.unlink(missing_ok=True)
         arq_filtro.unlink(missing_ok=True)
+        for a in arqs_letreiro:
+            a.unlink(missing_ok=True)
 
     if previa:
         return destino

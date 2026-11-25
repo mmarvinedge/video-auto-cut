@@ -51,6 +51,34 @@ def reiniciar() -> None:
     print(f"Painel reiniciado ({n} processo(s) antigo(s) encerrado(s)). Em instantes: http://localhost:8800")
 
 
+# variáveis gravadas com `setx` (as do usuário no Windows) que o painel precisa: um processo aberto
+# por outro programa (um terminal antigo, uma ferramenta) pode não tê-las no ambiente, e aí o
+# painel subia sem a IA, calado. Sem o valor no ambiente, ele vem do registro do usuário.
+DO_USUARIO = ("ANTHROPIC_API_KEY",)
+
+
+def _variaveis_do_usuario() -> list[str]:
+    if os.name != "nt":
+        return []
+    import winreg
+    achadas = []
+    try:
+        with winreg.OpenKey(winreg.HKEY_CURRENT_USER, "Environment") as chave:
+            for nome in DO_USUARIO:
+                if os.environ.get(nome):
+                    continue
+                try:
+                    valor, _ = winreg.QueryValueEx(chave, nome)
+                except FileNotFoundError:
+                    continue
+                if valor:
+                    os.environ[nome] = str(valor)
+                    achadas.append(nome)
+    except OSError:
+        pass
+    return achadas
+
+
 def subir() -> None:
     os.chdir(RAIZ)
     sys.path.insert(0, str(RAIZ))
@@ -59,6 +87,10 @@ def subir() -> None:
         LOG.replace(LOG.with_suffix(".log.1"))
     sys.stdout = sys.stderr = open(LOG, "a", encoding="utf-8", buffering=1)
     print(f"\n===== {datetime.now():%Y-%m-%d %H:%M:%S} painel subindo sem janela =====")
+    if achadas := _variaveis_do_usuario():
+        print(f"Lidas das variáveis do usuário (não estavam no ambiente): {', '.join(achadas)}")
+    if not os.environ.get("ANTHROPIC_API_KEY"):
+        print("AVISO: sem ANTHROPIC_API_KEY: os edits e os cortes vão sair sem a IA")
 
     if os.name == "nt":
         console = Path(sys.executable).with_name("python.exe")

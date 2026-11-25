@@ -11,6 +11,16 @@ Um VOD da Twitch ou do Kick vira três tipos de vídeo vertical 1080x1920:
 Comando: `python -m cortes processar <canal> <video>` (`cmd_processar` em `__main__.py`).
 Pelo painel: aba **Lives** → **Processar**, que roda `baixar-audio` e depois `processar` (veja painel.md).
 
+A lista de VODs (`vod.listar`, via `trabalho.vods`) mostra quando cada live começou e marca as que já viraram cortes,
+para não processar a mesma duas vezes:
+
+- **Data**: o `yt-dlp --flat-playlist` traz o `timestamp` no Kick, mas não na Twitch nem no YouTube. Na Twitch as datas
+  vêm numa consulta só ao gql (`vod._datas_twitch`, o mesmo endereço e client-id do chat dos VODs), com um apelido por
+  VOD. No YouTube, o `--extractor-args youtubetab:approximate_date` faz o yt-dlp estimar a data pelo "há 2 dias" da
+  página (só o dia). Sem resposta, a lista sai sem a data ("data desconhecida"), sem quebrar.
+- **Já processada**: existe `dados/<canal>/candidatos/<id do VOD>_audio.json` (ou `<id>.json`). É olhado a cada pedido,
+  fora do cache da lista, então uma live processada agora já aparece marcada.
+
 ## Fluxo
 
 ```

@@ -91,8 +91,8 @@ edit:                      # edits de filme: `python -m cortes edit <filme> <mus
   velocidade: 0.85         # câmera lenta dos planos da música (1 = normal)
   proporcao: "4:5"         # "4:5" com tarjas pretas (o visual dos edits) | "9:16" tela cheia
   idioma: pt               # da fala do filme, para o Whisper achar o gancho: pt, en, es... ou auto
-  slowed: 0.85             # 1 = música original; 0.85 = o "slowed" do TikTok
-  reverb: true
+  slowed: 1                # 1 = música original; 0.85 = o "slowed" do TikTok
+  reverb: true             # só junto com o slowed (com a música original, ela fica limpa)
   volume_gancho: 0.18      # a música entra baixinha debaixo da fala e sobe no drop
   musica_no_gancho: true   # false: música muda durante o gancho, entra só no drop (mais impacto)
   drop_fala: depois        # fala do gatilho no drop: depois (ela limpa, o drop quando acaba) | durante

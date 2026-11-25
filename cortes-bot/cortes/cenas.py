@@ -106,7 +106,9 @@ def _escolher_cortes(tempos: np.ndarray, notas: np.ndarray, forte: float = 0.3, 
 
 def detectar(video: Path, inicio: float = 0.0, fim: float | None = None, progresso=None,
              tarja_: tuple | None = None) -> list[dict]:
-    """Lista de planos [{"id", "inicio", "fim"}] em tempo absoluto do filme.
+    """Lista de planos [{"id", "inicio", "fim", "mov"}] em tempo absoluto do filme. `mov` é o
+    movimento do plano: a nota de cena média dos quadros de dentro dele (sem as pontas), de 0
+    (parado) a ~0,1 (ação rápida). Os modelos com rampa de velocidade preferem os que mexem.
 
     Lê a nota de cena de cada quadro (`select=gte(scene,0)` + `metadata=print`) numa cópia
     pequena da imagem, sem as tarjas (elas pesam na média e baixam a nota dos cortes), e decide
@@ -137,7 +139,13 @@ def detectar(video: Path, inicio: float = 0.0, fim: float | None = None, progres
     cortes = _escolher_cortes(np.array(tempos), np.array(notas)) if tempos else []
     bordas = [inicio] + [t for t in cortes if inicio + 0.2 < t < fim - 0.2] + [fim]
     pares = [(a, b) for a, b in zip(bordas, bordas[1:]) if b - a >= 0.2]   # flash de 1–5 quadros
-    return [{"id": i + 1, "inicio": round(a, 3), "fim": round(b, 3)} for i, (a, b) in enumerate(pares)]
+    tempos_, notas_ = np.array(tempos), np.array(notas)
+
+    def movimento(a: float, b: float) -> float:
+        dentro = (tempos_ > a + 0.12) & (tempos_ < b - 0.12)
+        return round(float(notas_[dentro].mean()), 4) if dentro.any() else 0.0
+    return [{"id": i + 1, "inicio": round(a, 3), "fim": round(b, 3), "mov": movimento(a, b)}
+            for i, (a, b) in enumerate(pares)]
 
 
 def _recorte(largura_fonte: int, altura_fonte: int, proporcao: float, tarja_: tuple | None = None) -> str:
@@ -154,36 +162,45 @@ def _recorte(largura_fonte: int, altura_fonte: int, proporcao: float, tarja_: tu
 
 def miniatura(video: Path, cena: dict, destino: Path, proporcao: float = 0.8,
               fonte_wh: tuple[int, int] = (1920, 1080), tarja_: tuple | None = None) -> float:
-    """Tira a miniatura do meio do plano, numerada, e devolve o brilho médio (0–1): planos
-    escuros demais (fade, noite sem luz) não servem para o edit."""
+    """Tira a miniatura do meio do plano, numerada, e devolve (brilho, textura, liso): o brilho
+    médio (0–1; planos escuros demais não servem), a textura (mediana da diferença entre pixels
+    vizinhos: imagem filmada tem grão, cartela gráfica dá 0) e quanto da imagem tem o mesmo tom
+    (fundo liso de cartela, logo, tela de data)."""
     t = (cena["inicio"] + cena["fim"]) / 2
     rec = _recorte(*fonte_wh, proporcao, tarja_)
     rotulo = (f"drawtext=fontfile='{FONTE}':text='{cena['id']}':fontsize=30:fontcolor=white:"
               "box=1:boxcolor=black@0.75:boxborderw=6:x=8:y=8")
     cmd = [config.ffmpeg(), "-v", "error", "-y", "-ss", f"{t:.2f}", "-i", str(video), "-frames:v", "1",
            "-filter_complex", f"[0:v]{rec},scale={MINI_W}:{MINI_H},setsar=1,split[a][b];"
-                              f"[a]{rotulo}[m];[b]scale=16:20,format=gray[c]",
+                              f"[a]{rotulo}[m];[b]scale=48:60,format=gray[c]",
            "-map", "[m]", "-q:v", "4", str(destino),
            # o -frames:v vale por saída: sem repetir aqui, esta segunda decodifica o filme até o fim
            "-map", "[c]", "-frames:v", "1", "-f", "rawvideo", "-"]
     r = subprocess.run(cmd, capture_output=True)
     if r.returncode or not destino.exists():
-        return 0.0
+        return 0.0, 0.0, 1.0
     px = np.frombuffer(r.stdout, np.uint8)
-    return float(px.mean() / 255) if len(px) else 0.0
+    if len(px) != 48 * 60:
+        return 0.0, 0.0, 1.0
+    img = px.reshape(60, 48).astype(np.float32)
+    textura = float(np.median(np.abs(np.diff(img, axis=1))))
+    liso = float(np.bincount((px // 8).astype(int)).max() / px.size)
+    return float(px.mean() / 255), textura, liso
 
 
 def miniaturas(video: Path, cenas_: list[dict], pasta: Path, proporcao: float = 0.8,
                tarja_: tuple | None = None) -> None:
-    """Preenche c["mini"] e c["brilho"] nas cenas que ainda não têm (fica em cache na pasta)."""
+    """Preenche c["mini"], c["brilho"], c["textura"] e c["liso"] nas cenas que ainda não têm
+    (fica em cache na pasta; caches de antes da textura tiram a miniatura de novo, uma vez)."""
     pasta.mkdir(parents=True, exist_ok=True)
     wh = tamanho(video)
-    faltam = [c for c in cenas_ if not (pasta / f"{c['id']:05d}.jpg").exists() or "brilho" not in c]
+    faltam = [c for c in cenas_ if not (pasta / f"{c['id']:05d}.jpg").exists() or "textura" not in c]
 
     def um(c):
         arq = pasta / f"{c['id']:05d}.jpg"
-        c["brilho"] = round(miniatura(video, c, arq, proporcao, wh, tarja_), 3)
-        c["mini"] = config.relativo(arq)
+        brilho, textura, liso = miniatura(video, c, arq, proporcao, wh, tarja_)
+        c.update(brilho=round(brilho, 3), textura=round(textura, 2), liso=round(liso, 2),
+                 mini=config.relativo(arq))
 
     with ThreadPoolExecutor(max_workers=4) as ex:
         list(ex.map(um, faltam))
@@ -213,11 +230,26 @@ def folhas(cenas_: list[dict], destino: Path) -> list[Path]:
     return saida
 
 
+def eh_cartela(c: dict) -> bool:
+    """Cartela de título, logo de estúdio ou de canal, tela de data de estreia, créditos: não é
+    imagem do filme e não pode entrar no edit. Duas marcas, medidas num trailer real (Vingadores 5):
+    - longa e congelada: 8 s ou mais quase sem movimento (a tela de data: 11 s, mov 0,0012; o logo
+      do canal: 20 s, mov 0,0003). O `mov` é medido numa cópia pequena, onde o grão some: um close
+      parado de verdade também dá ~0,0002, mas plano filmado de 8 s totalmente parado é raro;
+    - fundo liso sem textura e parada: imagem filmada tem grão (textura >= 1); gráfico dá 0."""
+    dur, mov = c["fim"] - c["inicio"], c.get("mov")
+    if mov is not None and dur >= 8 and mov < 0.0015:
+        return True
+    return (c.get("textura") is not None and c["textura"] < 0.5 and c.get("liso", 0) >= 0.6
+            and (mov is None or mov < 0.003))
+
+
 def candidatas(cenas_: list[dict], dur_min: float, maximo: int, excluir: tuple[float, float] | None = None,
                brilho_min: float = 0.08) -> list[dict]:
-    """Planos que servem para a parte da música: longos o bastante para o recorte e não escuros.
-    Se forem muitos, pega espalhado pelo filme todo (a IA vê no máximo `maximo`)."""
-    ok = [c for c in cenas_ if c["fim"] - c["inicio"] >= dur_min
+    """Planos que servem para a parte da música: longos o bastante para o recorte, não escuros e
+    que não são cartela (`eh_cartela`). Se forem muitos, pega espalhado pelo filme todo (a IA vê no
+    máximo `maximo`)."""
+    ok = [c for c in cenas_ if c["fim"] - c["inicio"] >= dur_min and not eh_cartela(c)
           and not (excluir and c["inicio"] < excluir[1] and c["fim"] > excluir[0])]
     if any("brilho" in c for c in ok):
         ok = [c for c in ok if c.get("brilho", 1) >= brilho_min]

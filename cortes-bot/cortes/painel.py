@@ -435,7 +435,7 @@ def opcoes_tiktok(tk: dict, escolhidas: list[dict]) -> dict:
 
 
 def estado() -> dict:
-    from . import edit, ia, pub_tiktok, pub_youtube
+    from . import edit, ia, modelos, pub_tiktok, pub_youtube
 
     cfg = config.carregar()
     return {
@@ -457,6 +457,7 @@ def estado() -> dict:
         "edit": {k: v for k, v in edit.cfg_edit(cfg).items() if k in ("proporcao", "slowed", "duracao_musica", "transicoes", "idioma",
                                                                          "musica_no_gancho", "ritmo", "abertura",
                                                                          "volume_musica", "drop_fala")},
+        "modelos": modelos.listar(com_padrao=True),
     }
 
 
@@ -556,6 +557,10 @@ def servir(dados: Path, porta: int = 8800, trabalhador: bool = True) -> None:
                         self._video(painel_edit.previa(dados, ident))
                     else:
                         self._video(painel_edit.video(dados, ident))
+                elif url.path.startswith("/previa-modelo/"):    # feita na hora na 1ª vez (~5 a 25 s)
+                    from . import modelos
+                    self._video(modelos.previa(unquote(url.path[len("/previa-modelo/"):]).removesuffix(".mp4"),
+                                               config.carregar()))
                 elif url.path.startswith("/audio-edit/"):
                     self._video(painel_edit.audio(dados, unquote(url.path[len("/audio-edit/"):])), "audio/wav")
                 elif url.path.startswith("/quadro-edit/"):

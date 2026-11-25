@@ -113,30 +113,74 @@ def energia_por_batida(y: np.ndarray, batidas: np.ndarray) -> np.ndarray:
                      for a, b in zip(amostras[:-1], amostras[1:])])
 
 
+GRAVE = (30, 130)       # Hz: baixo e bumbo. O drop é o grave voltando; o volume total quase não muda
+DROP_FORTE = 0.7        # uma volta de grave com 70% da maior já conta: vale a primeira
+DROP_CLARO_DB = 6.0     # o grave sobe menos que isso: a música não tem drop audível
+
+
+def grave_por_batida(y: np.ndarray, batidas: np.ndarray) -> np.ndarray:
+    """Energia do grave (GRAVE, em Hz) entre uma batida e a seguinte."""
+    amostras = np.append((np.asarray(batidas) * SR).astype(int), len(y))
+    saida = []
+    for a, b in zip(amostras[:-1], amostras[1:]):
+        trecho = y[a:b]
+        if len(trecho) < 64:
+            saida.append(0.0)
+            continue
+        esp = np.abs(np.fft.rfft(trecho * np.hanning(len(trecho)))) ** 2
+        f = np.fft.rfftfreq(len(trecho), 1 / SR)
+        saida.append(float(np.sqrt(esp[(f >= GRAVE[0]) & (f < GRAVE[1])].sum() / len(trecho))))
+    return np.array(saida)
+
+
+def subida_db(energia: np.ndarray, i: int, janela: int = 8) -> float:
+    """Quantos dB a música sobe na batida i: média das `janela` seguintes menos a das anteriores."""
+    db = 20 * np.log10(np.asarray(energia) + 1e-6)
+    frente, tras = db[i:i + janela], db[max(0, i - janela):i]
+    if len(frente) < 2:
+        return 0.0
+    return float(frente.mean() - (tras.mean() if len(tras) else frente.mean() - 6))
+
+
 def achar_drop(energia: np.ndarray, batidas: np.ndarray, antes: float, depois: float, janela: int = 8) -> int:
-    """Índice da batida em que a música mais "sobe": média das `janela` batidas seguintes menos a
-    das anteriores. Só vale batida com `antes` segundos de música antes (onde o gancho toca baixinho)
-    e `depois` segundos depois (a parte da música no edit)."""
+    """Índice da batida do drop. `energia`: por batida, de preferência a do grave (`grave_por_batida`):
+    música masterizada hoje tem o volume total quase constante, e o drop é o baixo e o bumbo voltando
+    (num Skrillex o grave salta 30 dB no drop e o volume total, 5). Só vale batida com `antes`
+    segundos de música antes (onde o gancho toca) e `depois` segundos depois.
+
+    1. A subida em cada batida: média das `janela` seguintes menos a das anteriores, em dB.
+    2. Vale a PRIMEIRA volta forte (pelo menos DROP_FORTE da maior): refrão e drop se repetem, e
+       antes valia a maior por décimos de dB (numa mixagem de 5 min o drop caiu aos 4 min).
+    3. Perto dessa região (as batidas seguidas acima do limite, 3 antes e 8 depois), a primeira
+       batida em que o grave já está no nível cheio de depois e fica nele: nas 4 batidas dali, a
+       mediana a até 6 dB e nenhuma a mais de 12 dB abaixo da mediana das 16 batidas seguintes à
+       região (o grave do funk oscila de uma batida para outra). A subida média cresce umas batidas
+       antes do salto, uma pancada solta de grave (preenchimento) também sobe, e o grave pode voltar
+       em dois degraus: no funk medido, ele volta pela metade aos 56,8 s, dá uma pancada aos 59,95 s
+       e só fica cheio aos 61,2 s, que é o drop que se ouve."""
     if len(batidas) == 0:
         raise ValueError("nenhuma batida")
-    db = 20 * np.log10(energia + 1e-6)
-    melhor, idx = -np.inf, None
-    for i in range(len(batidas)):
-        if batidas[i] < antes or batidas[i] + depois > batidas[-1] + 0.5:
-            continue
-        frente = db[i:i + janela]
-        tras = db[max(0, i - janela):i]
-        if len(frente) < 2:
-            continue
-        subida = frente.mean() - (tras.mean() if len(tras) else frente.mean() - 6)
-        # empate: prefere o começo de compasso (múltiplo de 4 batidas a partir do drop vale menos
-        # que acertar a subida; aqui só desempata) e o trecho mais alto
-        pont = subida + 0.15 * frente.mean() / 10
-        if pont > melhor:
-            melhor, idx = pont, i
-    if idx is None:   # música curta demais para as restrições: pega o trecho mais alto que couber
-        idx = int(np.argmax([energia[i:i + janela].mean() for i in range(len(batidas))]))
-    return idx
+    db = 20 * np.log10(np.asarray(energia) + 1e-6)
+    validas = [i for i in range(len(batidas))
+               if batidas[i] >= antes and batidas[i] + depois <= batidas[-1] + 0.5 and len(db[i:i + janela]) >= 2]
+    if not validas:   # música curta demais para as restrições: pega o trecho mais alto que couber
+        return int(np.argmax([np.mean(energia[i:i + janela]) for i in range(len(batidas))]))
+    sub = {i: subida_db(energia, i, janela) + 0.15 * db[i:i + janela].mean() / 10 for i in validas}
+    maior = max(sub.values())
+    if maior <= 0:
+        return max(sub, key=sub.get)
+    limite = DROP_FORTE * maior
+    primeira = min(i for i in validas if sub[i] >= limite)
+    regiao = [primeira]
+    while regiao[-1] + 1 in sub and sub[regiao[-1] + 1] >= limite:
+        regiao.append(regiao[-1] + 1)
+    perto = [i for i in range(regiao[0] - 3, regiao[-1] + 9) if i in sub]
+    cheio = float(np.median(db[regiao[-1]:regiao[-1] + 16]))
+    for i in perto:
+        q = db[i:i + 4]
+        if len(q) == 4 and np.median(q) >= cheio - 6 and q.min() >= cheio - 12:
+            return i
+    return max(regiao, key=sub.get)
 
 
 def analisar(wav: Path) -> dict:
@@ -150,7 +194,8 @@ def analisar(wav: Path) -> dict:
     batidas = np.round(batidas + LATENCIA, 3)
     batidas = batidas[(batidas >= 0) & (batidas <= len(y) / SR)]
     return {"bpm": round(float(bpm), 1), "duracao": round(len(y) / SR, 2),
-            "batidas": batidas.tolist(), "energia": energia_por_batida(y, batidas).round(5).tolist()}
+            "batidas": batidas.tolist(), "energia": energia_por_batida(y, batidas).round(5).tolist(),
+            "grave": grave_por_batida(y, batidas).round(6).tolist()}
 
 
 def cortes_na_batida(batidas: list[float], drop: float, duracao: float, corte_min: float,
