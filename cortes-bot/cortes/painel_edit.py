@@ -108,6 +108,9 @@ def argumentos(corpo: dict) -> tuple[list[str], str]:
     args = ["edit", filme, musica] + extra_f + extra_m
     if tema := str(corpo.get("tema") or "").strip()[:300]:
         args.append(f"--tema={tema}")
+    if modelo := str(corpo.get("modelo") or "").strip():
+        from . import modelos
+        args.append(f"--modelo={modelos.carregar(modelo)['id']}")     # recusa aqui um modelo que não existe
     if trecho := _intervalo(corpo, "trecho", "Trecho do filme"):
         args.append(f"--trecho={trecho}")
     if gancho := _intervalo(corpo, "gancho", "Gancho"):
@@ -206,6 +209,7 @@ def listar(dados: Path) -> list[dict]:
             "id": f"{pasta.parent.name}/{pasta.name}",
             "filme": Path(d.get("filme", "")).name, "musica": Path(d.get("musica_original", "")).name,
             "titulo": d.get("titulo", ""), "descricao": d.get("descricao", ""), "hashtags": d.get("hashtags", []),
+            "modelo": d.get("modelo"),
             "gancho": " ".join(p["w"] for p in d.get("gancho", {}).get("palavras", [])),
             "gancho_inicio": d.get("gancho", {}).get("inicio"),
             "duracao": d.get("duracao"), "bpm": d.get("bpm"), "cortes": len(d.get("cortes", [])),
@@ -322,7 +326,9 @@ def linha(dados: Path, ident: str) -> dict:
             "volume_musica": (d.get("estilo") or {}).get("volume_musica", 1.0),
             "musica_no_gancho": (d.get("estilo") or {}).get("musica_no_gancho", True),
             "ritmo": d.get("ritmo") or "normal",
-            "duracao_musica": round(d["duracao"] - (d.get("abertura_dur") or 0) - (g["fim"] - g["inicio"]), 2),
+            "duracao_musica": round(d["duracao"] - (d.get("abertura_dur") or 0) - (d.get("preparacao_dur") or 0)
+                                    - (g["fim"] - g["inicio"]), 2),
+            "preparacao_dur": d.get("preparacao_dur") or 0,
             "abertura": bool(d.get("abertura_falas")), "abertura_falas": len(d.get("abertura_falas") or []),
             "transicoes": (d.get("config") or {}).get("transicoes", edit.PADRAO["transicoes"]),
             "abertura_dur": d.get("abertura_dur") or 0,

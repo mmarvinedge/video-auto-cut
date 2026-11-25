@@ -13,6 +13,7 @@ D:\video-auto-cut\
 ├── prontos\                   vídeos aprovados + legenda .txt, para publicar à mão
 └── cortes-bot\
     ├── config.yaml            toda a configuração (comentada)
+    ├── modelos\               modelos de edit, um .yaml cada (veja modelos.md)
     ├── iniciar_painel.pyw     sobe o painel escondido ao entrar no Windows
     ├── cortes\                o pacote (python -m cortes ...)
     ├── docs\                  esta documentação
@@ -46,6 +47,7 @@ dados/
 │   ├── enquadramento.json         enquadramento do canal
 │   └── enquadramento/             enquadramento por VOD e por corte
 ├── edits/<filme>/                 edits de filme (veja edits.md)
+├── modelos/                       prévias dos modelos de edit e a mídia sintética delas (veja modelos.md)
 ├── _publicacao/                   contas.json, fila.json e tokens/ (NUNCA versionar)
 └── painel.log                     saída do painel quando ele sobe escondido
 ```
@@ -77,6 +79,7 @@ próxima ação, sem reiniciar o painel. Seções: `corte`, `tiktok`, `deteccao`
 | `painel` | abre o painel em http://localhost:8800 |
 | `enquadrar <canal> <video>` | ferramenta de enquadramento avulsa (porta 8810) |
 | `edit <filme> <musica>` / `edit-render <plano.json>` | edits de filme (veja edits.md) |
+| `modelos` | lista os modelos de edit (veja modelos.md) |
 
 **Para criar um comando**: escreva `cmd_x(cfg, a)`, registre em `main()` e acrescente uma linha na
 docstring do topo do arquivo. Imports pesados (Whisper, anthropic, módulos do painel) ficam **dentro**
@@ -111,4 +114,5 @@ Scripts soltos, sem pytest. Rode de dentro de `cortes-bot`, com o Python do `.ve
 | `tests/teste_publicacao.py` | fila, YouTube e simulação, com respostas simuladas |
 | `tests/teste_tiktok.py` | vínculo e envio ao TikTok, com respostas simuladas |
 | `tests/teste_edit.py` | edits: batidas, drop, cortes de câmera e render, com música e filme sintéticos |
+| `tests/teste_modelos.py` | modelos de edit: carregar e aplicar, letreiro, transições e um edit com o Honorable |
 | `tests/teste_leitor_resposta.mjs` | leitor da resposta colada de outro chat (`node tests/teste_leitor_resposta.mjs`) |

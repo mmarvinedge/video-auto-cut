@@ -29,7 +29,9 @@ Um edit tem estas partes, nesta ordem:
    expressivos que combinam com o clima do gancho. Prefira closes e planos médios do personagem
    principal do gancho (rosto, olhar, expressão), planos com luz bonita e movimento; evite plano
    aberto sem ninguém, tela escura, letreiro, cena borrada ou personagem cortado pelo recorte
-   vertical. Varie: não repita planos quase iguais em sequência.
+   vertical. Varie: não repita planos quase iguais em sequência. NUNCA escolha o que não é imagem
+   do filme: logo de estúdio ou de canal, título do filme, data de estreia ("nos cinemas"),
+   classificação indicativa, créditos, cartela com texto (trailers têm muitas, sobretudo no fim).
 
 Você recebe a transcrição (cada linha com o tempo em segundos do filme), a lista dos planos com o
 tempo de cada um no filme e folhas de miniaturas. Cada miniatura tem o número do plano no canto e
@@ -61,6 +63,10 @@ Responda com:
   guerra, um chamado: "A mim, meus X-Men!", "Avante, Vingadores!"), o segundo do filme em que essa
   fala termina (pela transcrição). O som do filme continua por cima da música até ali, com
   legenda. null se o drop não cai numa fala.
+- texto_editor: só se o "Estilo do edit" pedir texto do editor: 2 a 5 palavras de impacto, em
+  MAIÚSCULAS, que entram uma por batida logo depois do drop, por cima dos planos ("MARVEL DECIDED TO
+  COOK", "O DOUTOR CHEGOU"). Uma frase curta e forte sobre o filme ou o tema, na língua do tema (ou
+  português, sem tema). Uma palavra por item. Lista vazia se o estilo não pedir.
 - drop_na_fala: só se o tema disser quando o drop cai em relação à fala do gatilho: "depois"
   ("depois que ele falar", "quando ele terminar") ou "durante" ("junto com a fala", "em cima
   da fala"). null se o tema não disser (vale a configuração do editor). Com fala_drop_fim,
@@ -93,6 +99,7 @@ class PlanoIA(BaseModel):
     abertura: list[Trecho] = []
     fala_drop_fim: float | None = None
     drop_na_fala: Literal["durante", "depois"] | None = None
+    texto_editor: list[str] = []
     titulo: str
     descricao: str
     hashtags: list[str]
@@ -127,6 +134,8 @@ def escolher(palavras: list[dict], folhas: list[Path], faixas: list[tuple[int, i
                              g_longo=cfg_edit["gancho_longo"], n_planos=n_planos, n_min=n_min)
     conteudo = [{"type": "text", "text":
                  f"Filme: {filme}\n" + (f"Tema pedido pelo editor: {tema}\n" if tema else "")
+                 + (f"Estilo do edit (modelo escolhido pelo editor): {cfg_edit['dica_ia']}\n"
+                    if cfg_edit.get("dica_ia") else "")
                  + f"\n## Transcrição\n{transcricao_em_linhas(palavras)}\n"
                  + (f"\n## Planos (número: início–fim, em segundos do filme)\n{planos_em_linhas(cenas_)}\n"
                     if cenas_ else "")

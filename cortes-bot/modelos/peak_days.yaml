@@ -1,0 +1,51 @@
+# PEAK DAYS ("Peak Days are Coming..." - Avengers Doomsday Edit, de Parthedits8, YouTube Shorts,
+# 30 s, 4:5 com tarjas, música "Funk Gamble (Super Slowed)").
+#
+# Como o original é montado, medido quadro a quadro no navegador:
+#   0-6 s     abertura com texto do editor em duas camadas ("while everyone was busy" pequeno e
+#             branco em cima, "PLAYING GTA 6" grande, estreito, com degradê rosa->laranja e brilho)
+#             sobre planos de 0,63 s (uma batida a ~95 BPM).
+#   6 s       mergulho no preto: o plano escurece em 6 quadros, 4 quadros de preto, o próximo
+#             sai do preto em 6.
+#   6-8,5 s   texto do editor, uma palavra por batida, branca, grande, no meio ("MARVEL",
+#             "DECIDED", "TO", "COOK"); a cada palavra nova, um quadro todo preto com só ela.
+#   8,5-18 s  falas do filme em duas camadas: as palavras pequenas entrando quando ditas ("to me",
+#             "let's get") e as palavras-chave grandes com degradê, cada frase numa cor (vermelho
+#             "MY X-MEN", verde "STARTED", dourado "THE ALL FATHERS"). Cortes secos na batida e na
+#             meia batida, entradas com zoom e borrão, um quadro de flash branco no raio, pausas de
+#             8 quadros de preto entre as partes.
+#   18-26 s   outro mergulho, com um risco de luz cruzando o preto, e a mesma legenda em dourado.
+#   fim       a assinatura do canal (fica de fora).
+# Cor quente, contraste alto, sem grão.
+#
+# Aqui: a fala do gancho (e a da abertura, e a do drop) sai na legenda em destaque; a IA escreve o
+# texto do editor (2 a 5 palavras) que entra uma por batida logo depois do drop; o drop entra no
+# mergulho; os cortes alternam corte seco e zoom, com flash seco de tempos em tempos.
+nome: Peak Days
+descricao: >-
+  Edit de hype: as falas em duas camadas (pequenas em cima, a palavra-chave grande com degradê e
+  brilho, uma cor por frase), o drop mergulhando no preto com um risco de luz e um texto de impacto
+  palavra por palavra na batida.
+referencia: https://www.youtube.com/shorts/8sbY1Zt0Yr0
+
+edit:
+  proporcao: "4:5"
+  slowed: 1.0                  # o original usa uma versão "Super Slowed" pronta: não deixe mais lenta
+  velocidade: 0.9
+  corte_min: 0.3
+  corte_max: 1.0
+  transicoes: [corte, zoom, flash_seco, mergulho]
+  transicao_drop: mergulho
+  musica_no_gancho: true
+  fim_preto: 0.6
+  texto_editor: true
+  cor: {contraste: 1.18, saturacao: 1.02, brilho: -0.02, balanco: quente, vinheta: true, grao: 0}
+  dica_ia: >-
+    edit de hype, com texto do editor: escreva texto_editor com 2 a 5 palavras de impacto (uma frase
+    curta e forte, como "MARVEL DECIDED TO COOK"). Escolha um gancho com uma fala marcante e curta,
+    e planos expressivos dos personagens principais, com luz forte e contraste.
+
+destaque:
+  fonte: Impact
+  tamanho: 150
+  cores: [["FF5FB0", "FFB347"], ["FF2D2D", "FF8A3D"], ["7CFF6B", "12A84A"], ["FFE7A0", "C8892B"]]

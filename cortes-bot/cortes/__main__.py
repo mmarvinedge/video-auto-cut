@@ -12,6 +12,7 @@
   python -m cortes enquadrar <canal> <video.mp4>      escolhe na tela o recorte da cam e do conteúdo
   python -m cortes edit <filme> <musica>              edit de filme: gancho com fala + planos na batida
   python -m cortes edit-render <plano.json>           renderiza de novo um edit depois de mexer no plano
+  python -m cortes modelos                            lista os modelos de edit (modelos/*.yaml)
   python -m cortes baixar-youtube <url> [--audio] [--qualidade q]   baixa um vídeo (ou o áudio) do YouTube para um edit
 """
 import argparse
@@ -32,6 +33,12 @@ def cmd_edit(cfg, a):
     for arq in (filme, musica):
         if not arq.exists():
             raise SystemExit(f"Não achei {arq}")
+    if a.modelo:            # o modelo fica entre o config e as opções da mão
+        from . import modelos
+        try:
+            cfg["edit"] = modelos.aplicar(cfg.get("edit"), a.modelo)
+        except ValueError as erro:
+            raise SystemExit(str(erro))
     ajustes = {"proporcao": a.proporcao, "slowed": a.slowed,
                "musica_no_gancho": {"sim": True, "nao": False}.get(a.musica_no_gancho),
                "volume_musica": a.volume_musica,
@@ -65,6 +72,15 @@ def cmd_baixar_youtube(cfg, a):
     from . import youtube
     arq = youtube.baixar(youtube.validar(a.url), a.audio, youtube.pasta(cfg), q=a.qualidade)
     print(f"Arquivo: {arq}")      # o painel lê esta linha para preencher o campo do edit
+
+
+def cmd_modelos(cfg, a):
+    from . import modelos
+    lista = modelos.listar()
+    if not lista:
+        print(f"Nenhum modelo em {modelos.PASTA}")
+    for m in lista:
+        print(f"{m['id']:<16} {m['nome']}: {m['descricao']}")
 
 
 def cmd_edit_render(cfg, a):
@@ -434,6 +450,7 @@ def main():
     s.add_argument("--qualidade-musica", choices=["melhor", "192", "128"],
                    help="com a música no YouTube: kbps do mp3 (padrão melhor)")
     s.add_argument("--tema", help='dica para a IA, ex.: "o romance do Peter e da Gwen"')
+    s.add_argument("--modelo", help="modelo de edit (modelos/<id>.yaml), ex.: honorable; veja `python -m cortes modelos`")
     s.add_argument("--trecho", help="só esta parte do filme, ex.: 1:20:00-1:42:00 (mais rápido e mais focado)")
     s.add_argument("--gancho", help="fala de gancho escolhida à mão, ex.: 1:23:10-1:23:19")
     s.add_argument("--drop", help="segundo da música (já tratada) onde os cortes começam")
@@ -462,6 +479,7 @@ def main():
     s.add_argument("url"); s.add_argument("--audio", action="store_true", help="só o áudio, em mp3 (para a música)")
     s.add_argument("--qualidade", help="vídeo: 1080 (padrão), 720, 480 ou melhor; áudio: melhor (padrão), 192 ou 128")
     s.set_defaults(f=cmd_baixar_youtube)
+    s = sub.add_parser("modelos", help="lista os modelos de edit"); s.set_defaults(f=cmd_modelos)
     s = sub.add_parser("edit-render"); s.add_argument("plano")
     s.add_argument("--previa", action="store_true", help="prévia rápida em 540 px (previa.mp4), para conferir um ajuste")
     s.add_argument("--prontos", action="store_true", help="copia o vídeo e a legenda para a pasta de prontos")

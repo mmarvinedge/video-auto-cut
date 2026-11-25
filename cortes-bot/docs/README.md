@@ -12,6 +12,7 @@ ficam, como estender e as armadilhas já conhecidas**.
 | [enquadramento.md](enquadramento.md) | Ferramenta para marcar a facecam e o conteúdo (porta 8810) | `enquadrar`, `enquadrar.html` |
 | [publicacao.md](publicacao.md) | Contas, fila agendada, YouTube, TikTok, simulação e a pasta `prontos/` | `contas`, `fila`, `pub_*` |
 | [edits.md](edits.md) | Edits de filme: fala de gancho + planos cortados na batida da música | `edit`, `batidas`, `cenas`, `ia_edit`, `painel_edit` |
+| [modelos.md](modelos.md) | Modelos de edit: receitas de estilo (formato, transições, cor, letreiro) tiradas de modelos do CapCut | `modelos`, `efeitos`, `legendas`, `modelos/*.yaml` |
 
 ## Onde procurar
 
@@ -23,6 +24,7 @@ ficam, como estender e as armadilhas já conhecidas**.
 | mudar como os momentos são escolhidos | [cortes-de-live.md › Detecção](cortes-de-live.md#2-detecção) |
 | mudar o visual do corte (layout, legenda) | [cortes-de-live.md › Render](cortes-de-live.md#5-render) |
 | entender por que um corte não foi publicado | [publicacao.md › Fila](publicacao.md#fila) |
+| criar um modelo de edit a partir de um modelo do CapCut | [modelos.md › Como criar](modelos.md#como-criar-um-modelo-novo) |
 | mexer no prompt da IA | `cortes/ia.py` (cortes) e `cortes/ia_edit.py` (edits) |
 | rodar os testes | [arquitetura.md › Testes](arquitetura.md#testes) |
 

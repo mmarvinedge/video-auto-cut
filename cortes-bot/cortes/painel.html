@@ -111,6 +111,11 @@
           </fieldset>
           <label class="campo largo"><span class="rotulo">Tema <span class="motivo">(opcional: uma dica para a IA)</span></span>
             <input id="ed-tema" maxlength="300" placeholder="o romance do Peter e da Gwen"></label>
+          <div class="campo largo"><span class="rotulo">Modelo <span class="motivo">(opcional: um estilo pronto, tirado de um modelo de referência)</span></span>
+            <input type="hidden" id="ed-modelo" value="">
+            <span class="modelo-escolhido"><b id="ed-modelo-nome">Edit padrão</b>
+              <button type="button" id="ed-modelo-abrir">Ver modelos…</button></span>
+            <span class="motivo" id="ed-modelo-info"></span></div>
           <div class="campo"><span class="rotulo">Trecho do filme <span class="motivo">(opcional: só essa parte, mais rápido e coerente)</span></span>
             <span class="intervalo"><input id="ed-trecho-inicio" placeholder="1:10:00" aria-label="Início do trecho do filme">
               <span>até</span><input id="ed-trecho-fim" placeholder="1:40:00" aria-label="Fim do trecho do filme"></span></div>
@@ -345,6 +350,16 @@
       <button type="button" id="aj-final">Renderizar final</button>
     </div>
     <video id="aj-previa" controls playsinline hidden></video>
+  </div>
+</dialog>
+
+<dialog id="dlg-modelos" aria-labelledby="mod-titulo">
+  <div class="dlg">
+    <h2 id="mod-titulo">Modelos de edit</h2>
+    <p class="obs">Cada prévia é feita pelo próprio edit, com um filme e uma música de exemplo. A primeira vez de cada
+      uma leva alguns segundos.</p>
+    <ul class="modelos-grade" id="mod-grade"></ul>
+    <div class="rodape"><button type="button" id="mod-fechar">Fechar</button></div>
   </div>
 </dialog>
 
@@ -1261,7 +1276,8 @@ function cardEdit(e) {
       <div class="meta"><span class="badge">${esc(e.filme)}</span><span class="badge fmt-tiktok">${esc(e.musica)}</span>
         <span>${e.duracao ? e.duracao.toFixed(1) + "s" : ""}</span><span>${e.cortes} cortes · ${e.bpm} BPM</span>
         ${e.renderizado ? `<span>${mb(e.bytes)}</span>` : ""}<span>${quando}</span>
-        <span class="badge">${e.com_ia ? "IA" : "sem IA"}</span></div>
+        <span class="badge">${e.com_ia ? "IA" : "sem IA"}</span>
+        ${e.modelo ? `<span class="badge">modelo ${esc(e.modelo)}</span>` : ""}</div>
       ${e.gancho ? `<div class="gancho">“${esc(e.gancho)}”${e.gancho_inicio != null ? ` <span class="motivo">em ${hhmmss(e.gancho_inicio)}</span>` : ""}</div>` : ""}
       <label class="campo"><span class="rotulo">Título</span>
         <input class="titulo" maxlength="100" value="${esc(e.titulo)}" aria-label="Título"></label>
@@ -1302,11 +1318,67 @@ function fonte(campo) {
            [`${campo}_qualidade`]: yt ? valorDe(`ed-${campo}-qualidade`) : "" };
 }
 
+// ---- modelos: a galeria com a prévia de cada um ("padrao" = o edit sem modelo)
+const NOMES_FORMATO = { "9:16": "9:16 tela cheia", "4:5": "4:5 com tarjas" };
+
+function escolherModelo(id) {
+  const m = (E.modelos || []).find(x => x.id === id);
+  $("#ed-modelo").value = id && id !== "padrao" ? id : "";
+  $("#ed-modelo-nome").textContent = m ? m.nome : "Edit padrão";
+  $("#ed-modelo-info").textContent = m && id !== "padrao"
+    ? `${m.descricao} O modelo escolhe formato, transições e cor; o que você mudar em Ajustes finos vale mais.` : "";
+}
+
+function abrirModelos() {
+  const atual = $("#ed-modelo").value || "padrao";
+  $("#mod-grade").innerHTML = (E.modelos || []).map(m => `
+    <li class="modelo-card${m.id === atual ? " escolhido" : ""}" data-id="${esc(m.id)}">
+      <div class="modelo-video"><video muted loop playsinline controls preload="none"
+          aria-label="Prévia do modelo ${esc(m.nome)}" data-src="/previa-modelo/${encodeURIComponent(m.id)}.mp4"></video>
+        <span class="modelo-carregando">Gerando a prévia…</span></div>
+      <b>${esc(m.nome)}</b>
+      <span class="motivo">${esc(m.descricao)}</span>
+      <span class="modelo-tracos">${esc(NOMES_FORMATO[m.proporcao] || m.proporcao)}
+        · ${m.letreiro ? "letreiro palavra por palavra" : m.destaque ? "legenda em destaque" : "legenda neon"}${m.texto_editor ? " · texto do editor na batida" : ""}
+        ${m.rampa ? "· rampa de velocidade com borrão" : ""}
+        ${m.preparacao ? `· ${Math.round(m.preparacao)}s de planos lentos antes do drop` : ""}
+        · drop: ${esc(NOMES_TRANSICAO[m.transicao_drop] || m.transicao_drop)}
+        · ${m.transicoes.length ? esc(m.transicoes.map(t => NOMES_TRANSICAO[t] || t).join(", ")) : "corte seco"}</span>
+      <span class="acoes">
+        <button type="button" class="mod-usar"${m.id === atual ? " disabled" : ""}>${m.id === atual ? "Escolhido" : "Usar este"}</button>
+        ${m.referencia ? `<a href="${esc(m.referencia)}" target="_blank" rel="noopener noreferrer">Ver o original</a>` : ""}</span>
+    </li>`).join("");
+  $("#dlg-modelos").showModal();
+  // uma prévia por vez: o servidor gera as que faltam em fila, e cada uma toca quando chega
+  const videos = [...$("#mod-grade").querySelectorAll("video")];
+  const proxima = () => {
+    const v = videos.shift();
+    if (!v) return;
+    const aviso = v.nextElementSibling;
+    v.addEventListener("loadeddata", () => { aviso.remove(); v.play().catch(() => {}); proxima(); }, { once: true });
+    v.addEventListener("error", () => { aviso.textContent = "Não deu para gerar a prévia"; proxima(); }, { once: true });
+    v.src = v.dataset.src;
+    v.load();
+  };
+  proxima();
+}
+
+$("#ed-modelo-abrir").addEventListener("click", abrirModelos);
+$("#mod-fechar").addEventListener("click", () => $("#dlg-modelos").close());
+$("#dlg-modelos").addEventListener("close", () =>
+  $("#mod-grade").querySelectorAll("video").forEach(v => { v.pause(); v.removeAttribute("src"); v.load(); }));
+$("#mod-grade").addEventListener("click", ev => {
+  const b = ev.target.closest(".mod-usar");
+  if (!b) return;
+  escolherModelo(b.closest(".modelo-card").dataset.id);
+  $("#dlg-modelos").close();
+});
+
 $("#ed-form").addEventListener("submit", async ev => {
   ev.preventDefault();
   const botao = ev.target.querySelector("button[type=submit]");
   const pedido = {
-    ...fonte("filme"), ...fonte("musica"), tema: valorDe("ed-tema"),
+    ...fonte("filme"), ...fonte("musica"), tema: valorDe("ed-tema"), modelo: valorDe("ed-modelo"),
     trecho_inicio: valorDe("ed-trecho-inicio"), trecho_fim: valorDe("ed-trecho-fim"),
     gancho_inicio: valorDe("ed-gancho-inicio"), gancho_fim: valorDe("ed-gancho-fim"),
     drop: valorDe("ed-drop"), drop_filme: valorDe("ed-drop-filme"), fala_drop: valorDe("ed-fala-drop"),
@@ -1558,7 +1630,7 @@ async function esperarPrevia() {
   const v = $("#aj-previa");
   v.src = `/video-edit/${encodeURI(AJ.id)}?previa=1&v=${Date.now()}`;
   v.hidden = false;
-  const p = AJ.d.plano, ini = (p.abertura_dur || 0) + (p.gancho ? p.gancho.fim - p.gancho.inicio : 0);
+  const p = AJ.d.plano, ini = (p.abertura_dur || 0) + (p.preparacao_dur || 0) + (p.gancho ? p.gancho.fim - p.gancho.inicio : 0);
   v.addEventListener("loadedmetadata", () => { v.currentTime = Math.max(0, ini - 4); }, { once: true });
   $("#aj-aplicar").disabled = false;
 }
@@ -1592,7 +1664,8 @@ $("#aj-desfazer").addEventListener("click", async () => {
 });
 
 // ---- aba Cortes: cada corte da música com o quadro do meio do trecho, a transição e as ações
-const NOMES_TRANSICAO = { zoom: "zoom", flash: "flash", chicote: "chicote", giro: "giro", fusao: "fusão", corte: "corte seco" };
+const NOMES_TRANSICAO = { zoom: "zoom", flash: "flash", chicote: "chicote", giro: "giro", fusao: "fusão", corte: "corte seco",
+  rolo: "rolo (o de antes enrola)", moldura: "moldura piscando", mergulho: "mergulho no preto", flash_seco: "flash seco" };
 function aba(qual) {
   const cortes = qual === "cortes";
   for (const nome of ["drop", "cortes", "geral"]) {

@@ -19,7 +19,12 @@ Dá para usar de dois jeitos: pela aba **Edits** do painel ou pelo comando
      (filme) ou áudios e vídeos (música) e lembra a última pasta usada;
    - do YouTube: cole o endereço e escolha a qualidade do download (veja abaixo). O edit baixa antes de começar, no
      mesmo trabalho.
-2. **Tema** (opcional): o pedido para a IA, como "o romance do Peter e da Gwen". Além do clima, a IA lê nele:
+2. **Modelo** (opcional): **Ver modelos…** abre a galeria, com a prévia de cada um tocando lado a lado (e a do
+   edit padrão, para comparar); **Usar este** escolhe. Um modelo, como o `honorable` (letreiro de LED palavra por
+   palavra, rolo no drop, moldura piscando), muda formato, transições, ritmo e cor; o que você escolher em Ajustes
+   finos vale mais. Veja [modelos.md](modelos.md).
+
+   **Tema** (opcional): o pedido para a IA, como "o romance do Peter e da Gwen". Além do clima, a IA lê nele:
    - a **duração** ("edit de 1 minuto");
    - um **gancho longo** ("o gancho é a conversa antes do estalo", até `gancho_longo` = 40 s);
    - o **momento do drop** ("drop na hora que ele estala os dedos");
@@ -134,6 +139,7 @@ o comando baixa antes de analisar (`youtube.resolver`), com o andamento na mesma
 | Opção | Faz |
 |---|---|
 | `--tema "..."` | dica para a IA |
+| `--modelo honorable` | aplica um modelo de edit ([modelos.md](modelos.md)); `python -m cortes modelos` lista os que existem |
 | `--trecho 1:10:00-1:40:00` | analisa só essa parte do filme |
 | `--gancho 1:23:10-1:23:19` | fala de gancho escolhida à mão (tempo do filme) |
 | `--drop 41.2` | segundo da música, já tratada, onde os cortes começam |
@@ -173,7 +179,7 @@ ou no drop, edite o JSON e rode `python -m cortes edit-render <plano.json>`.
 | Módulo | Faz |
 |---|---|
 | `batidas.py` | `preparar` (wav; slowed com `asetrate` + reverb com `aecho`, que o edit só liga junto com o slowed: o padrão é a música original); `analisar` (BPM, batidas, energia por batida); `achar_drop`; `cortes_na_batida` |
-| `cenas.py` | `tarja` (área sem as faixas pretas do cinemascope); `detectar` (cortes de câmera pela nota de cena de cada quadro, em `_escolher_cortes`); `miniaturas` (uma por plano, já no recorte vertical, mais o brilho médio); `folhas` (grades 6x5 numeradas para a IA); `candidatas` |
+| `cenas.py` | `tarja` (área sem as faixas pretas do cinemascope); `detectar` (cortes de câmera pela nota de cena de cada quadro, em `_escolher_cortes`, e o movimento `mov` de cada plano); `miniaturas` (uma por plano, já no recorte vertical, mais o brilho médio, a textura e quanto é liso); `eh_cartela` (título, logo, data de estreia: fica fora); `folhas` (grades 6x5 numeradas para a IA); `candidatas` (sem escuros nem cartelas) |
 | `transcrever.py` | `Transcritor.transcrever(..., idioma, vad)`: o edit usa `vad=False` e descarta os segmentos inventados (`_inventado`) |
 | `ia_edit.py` | uma chamada ao Claude com a transcrição (`[segundo] frase`), a lista dos planos com o tempo de cada um e as folhas como imagens; devolve `PlanoIA` (gancho, planos em ordem, `duracao_musica` e `drop_no_filme` quando o tema pede, título, hashtags, motivo) |
 | `edit.py` | `planejar`, `montar_cortes`, `renderizar`, `copiar_para_prontos` e a configuração (`PADRAO` + seção `edit:` do config) |
@@ -219,18 +225,25 @@ de `DROP_CLARO_DB` (6 dB), a música não tem drop audível e o trabalho avisa n
      inventados saem por `_inventado`: as regras do Whisper (pouca chance de fala com pouca confiança; texto
      repetitivo), frases fantasmas ("Thank you.", "inscreva-se", "Amara.org") e descrições de som em maiúsculas ou
      entre colchetes. Custa ~25 s por 10 min de filme na GPU, uma vez (fica em cache).
-3. Miniaturas dos planos longos o bastante (o pior caso é o corte mais longo a 0,5x), com o brilho gravado no cache.
-4. Gancho: manual (`--gancho`) > IA > heurística (o trecho de fala mais denso). `_encaixar_gancho` ajusta o gancho às
+3. **Cartelas fora** (`cenas.eh_cartela`): título, logo de estúdio ou de canal, tela de data de estreia, créditos.
+   Trailers têm muitas, sobretudo no fim. São duas marcas, medidas no trailer de Vingadores 5: **longa e congelada**
+   (8 s ou mais com `mov` abaixo de 0,0015; a tela de data tinha 11 s e o logo, 20 s) ou **fundo liso sem textura**
+   e parada (textura < 0,5 e 60% da imagem num tom só; imagem filmada tem grão e detalhe, gráfico dá 0). O `mov`
+   vem da detecção de cenas (um cache sem ele é medido de novo, uma vez); a textura e o liso, da miniatura (um cache
+   sem eles tira as miniaturas de novo, uma vez). As cartelas não entram nas candidatas, então nem a IA nem a
+   heurística as veem, e o prompt também proíbe logo, título, data e créditos.
+4. Miniaturas dos planos longos o bastante (o pior caso é o corte mais longo a 0,5x), com o brilho gravado no cache.
+5. Gancho: manual (`--gancho`) > IA > heurística (o trecho de fala mais denso). `_encaixar_gancho` ajusta o gancho às
    palavras sem cortar nenhuma no meio. A duração é arredondada para quadros inteiros (30 fps). Se a IA devolve um
    gancho sem fala (ela responde 0–0 quando a transcrição vem vazia), vale a heurística. **Sem fala nenhuma não há
    gancho**: o `plano.json` fica com `gancho.inicio == gancho.fim` e o edit abre direto no drop, com a música cheia.
    Com tema, o gancho pode ir até `gancho_longo` (40 s): o prompt diz à IA que só passe de `gancho_max` quando o
    tema pedir a conversa ou a cena inteira.
-5. Duração da música: `--duracao` (ou o campo) > `duracao_musica` da IA (só quando o tema pede; 5 a 60 s, já
+6. Duração da música: `--duracao` (ou o campo) > `duracao_musica` da IA (só quando o tema pede; 5 a 60 s, já
    descontado o gancho) > config. Com tema e sem duração à mão, a IA recebe planos para até 60 s.
-6. Drop: manual (`--drop`) ou `achar_drop`. Pontos de corte: a cada k batidas a partir do drop, com k escolhido para
+7. Drop: manual (`--drop`) ou `achar_drop`. Pontos de corte: a cada k batidas a partir do drop, com k escolhido para
    cada plano durar entre `corte_min` e `corte_max`.
-7. **Drop no filme** (`--drop-filme` > `drop_no_filme` da IA): o primeiro corte começa exatamente nesse segundo do
+8. **Drop no filme** (`--drop-filme` > `drop_no_filme` da IA): o primeiro corte começa exatamente nesse segundo do
    filme (mesmo passando do fim do plano, pela continuidade) e entra no zoom, não no flash, porque o momento já é o
    impacto. Se o filme ali é só clarão ou tela escura (`cenas.imagem_util`: o estalo de Ultimato é 3 s de branco),
    esse pedaço não entra: a música abre com o primeiro plano da IA, também com zoom, e o branco não aparece. O gancho termina ali (`_gancho_ate`): estica até ele se a fala acabou antes, corta as palavras que viriam
@@ -255,16 +268,18 @@ de `DROP_CLARO_DB` (6 dB), a música não tem drop audível e o trabalho avisa n
      não volta depois do drop. Com abertura, a música só entra no drop.
      (Uma primeira versão fazia a abertura com planos cortados na batida da música; isso enchia o começo de
      música, o contrário de criar expectativa, e saiu. O `plano.json` dela tinha `abertura`, que o render ignora.)
-8. Planos: os da IA (sem repetidos), depois os da heurística como reserva. `montar_cortes` casa cada intervalo com
+9. Planos: os da IA (sem repetidos), depois os da heurística como reserva. `montar_cortes` casa cada intervalo com
    um plano: se o plano for curto para a câmera lenta pedida, fica mais lento (até 0,5x); se nem assim couber, passa
    para o próximo. Cada uso guarda o pedaço do plano que foi usado: um plano longo volta para o fim da fila e, se usado
    de novo, pega outro pedaço, nunca a mesma imagem. O trecho do gancho conta como usado, então o plano do gancho só
    aparece depois do drop com um pedaço que o gancho não mostrou.
-9. Efeitos por corte (`_efeito`): o primeiro, no drop, leva zoom de impacto e tremida; os demais alternam impacto e
+10. Efeitos por corte (`_efeito`): o primeiro, no drop, leva zoom de impacto e tremida; os demais alternam impacto e
    aproximação lenta, com tremida a cada 4.
-10. Transição de entrada de cada corte (`_transicao`), entre as permitidas em `edit.transicoes`: o drop entra no
-   **flash**; a **fusão** vai a cada 3 cortes, só nos de 1 s ou mais e só se o plano anterior tiver filme sobrando
-   depois do trecho usado (a fusão o estica 8 quadros); **flash** a cada 8; o resto alterna zoom, chicote, zoom, giro.
+11. Transição de entrada de cada corte (`_transicao`), entre as permitidas em `edit.transicoes`: o drop entra no
+   **flash** (ou na `edit.transicao_drop`, que um modelo pode trocar); a **fusão** vai a cada 3 cortes, só nos de 1 s
+   ou mais e só se o plano anterior tiver filme sobrando depois do trecho usado (a fusão o estica 8 quadros);
+   **moldura** e **rolo**, se permitidas, de tempos em tempos depois de um corte de 0,55 s ou mais; **flash** a cada 8;
+   o resto alterna zoom, chicote, zoom, giro.
 
 ### `plano.json`
 
@@ -281,7 +296,13 @@ de `DROP_CLARO_DB` (6 dB), a música não tem drop audível e o trabalho avisa n
 - `drop_filme`: o segundo do filme que caiu no drop, ou `null`. `gatilho`: o que foi pedido (`momento`, `fala_fim`,
   `modo`), antes do modo "depois" mover o drop para o fim da fala; é o que a tela de ajuste mostra.
 - `tema`, `config` (a seção `edit:` usada) e `analise` (os caches de planos e falas): para o ajuste refazer o plano.
+- `preparacao` / `preparacao_dur`: planos lentos entre o gancho e o drop (de um modelo, como o `funk_power`), no
+  mesmo formato dos cortes; `[]` e `0` sem preparação. Com ela, `musica_inicio = drop - gancho - preparação` e o
+  primeiro corte entra em `abertura + gancho + preparação`. Um corte pode ter `rampa` (rápido-lento-rápido) e
+  `zoom: "nenhum"`. Veja [modelos.md](modelos.md#velocity-edit-rampa-borrão-movimento-e-preparação).
 - `cortes_editados`: algum corte foi mudado à mão na aba Cortes (ajustar o drop refaz os cortes e tira a marca).
+- `modelo`: o id do modelo de edit usado, ou `null`. `estilo.letreiro`: o letreiro do modelo (as falas viram
+  texto em LED, no lugar da legenda) e `estilo.fim_preto`: quanto o fim escurece. Veja [modelos.md](modelos.md).
 - `ritmo`: o ritmo usado. `abertura_falas`: as falas antes do gancho (`inicio`, `fim`, `palavras`, como o gancho);
   `abertura_dur`: quanto elas duram juntas. Com abertura, o gancho começa em `abertura_dur` e o `saida` dos cortes da
   música já soma abertura + gancho.
@@ -346,6 +367,10 @@ fortes ou lentos). Cada uma mexe nos **últimos 4 quadros** do plano que sai (o 
 | `giro` | gira 8° e aproxima | chega girado 12°, apertado e desfocado, e se endireita |
 | `fusao` | fica 8 quadros mais longo e se mistura (`xfade`) | aparece por baixo, a partir da batida |
 | `corte` | — | corte seco (o soco de zoom do plano continua) |
+
+Os modelos de edit acrescentam `rolo`, `moldura`, `mergulho` (escurece, um risco de luz cruza o preto e o próximo
+sai do preto) e `flash_seco` (um quadro branco sem fade): veja [modelos.md](modelos.md#transições-dos-modelos).
+| `rolo`, `moldura` | enrola como papel / moldura branca piscando com o plano seguinte | zoom / sai do branco (veja [modelos.md](modelos.md#transições-dos-modelos)) |
 
 Como funciona:
 

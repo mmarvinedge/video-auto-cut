@@ -1,0 +1,39 @@
+# FUNK POWER (modelo do CapCut de FedryDwi, 20 s, 33 clipes, 16:9, cenas do Homem-Aranha).
+#
+# Como o original é montado, medido quadro a quadro:
+#   0-1,8 s   sai do preto devagar
+#   1,8-8,9 s preparação: dois planos longos e calmos (4 s e 3 s), quase parados
+#   8,9-19 s  um corte a cada 19 quadros (0,63 s), regular como a batida, quase todos secos. Dentro de
+#             cada plano a velocidade faz rápido -> lento -> rápido (velocity edit): entra correndo, quase
+#             congela no meio e acelera até o corte, com borrão de movimento (rastro) nas partes rápidas.
+#             Todos os planos são de ação (balançar na teia, salto, soco).
+#   19 s      corta para o preto
+#
+# Aqui: a fala do gancho continua (se houver), depois a preparação, e a rampa em cada corte da música.
+nome: Funk Power
+descricao: >-
+  Velocity edit: depois de dois planos lentos que saem do preto, cada corte na batida entra correndo,
+  quase congela no meio e acelera até o próximo, com borrão de movimento. Prefere planos de ação.
+referencia: https://www.capcut.com/template-detail/7699775090845650196
+
+edit:
+  proporcao: "9:16"
+  slowed: 1.0
+  reverb: false
+  velocidade: 1.6              # média: 1,6 s de filme por segundo de corte
+  corte_min: 0.35
+  corte_max: 0.8
+  transicoes: [corte]
+  transicao_drop: corte
+  rampa: 0.9                   # o meio anda a 10% da velocidade das pontas
+  borrao_movimento: true
+  zoom_cortes: false
+  preferir_movimento: true
+  preparacao: 6.0
+  inicio_preto: 1.2
+  fim_preto: 0.15
+  cor: {contraste: 1.14, saturacao: 1.05, brilho: -0.01, balanco: neutro, vinheta: true, grao: 0}
+  dica_ia: >-
+    velocity edit (rampa de velocidade em cada corte). Escolha planos de ação, com muito movimento:
+    saltos, golpes, corridas, perseguições, câmera em movimento. Evite planos parados de diálogo e
+    rostos imóveis. Prefira um gancho curto e forte.

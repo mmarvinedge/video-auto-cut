@@ -1,0 +1,38 @@
+# HONORABLE (modelo do CapCut de razooydhan, 20 s, 14 clipes, 16:9).
+#
+# Como o original é montado, medido quadro a quadro:
+#   0-11 s   a voz vira texto palavra por palavra, no instante em que é dita: letreiro de LED com
+#            aberração cromática, fonte condensada, palavras alternando branco e vermelho, fundo preto.
+#            Nos buracos da fala, relâmpagos de imagem (0,4 a 1,5 s).
+#   11 s     drop: o letreiro enrola como um rolo e o primeiro plano entra.
+#   11-19 s  planos de 0,4 a 1 s na batida, quase todos em corte seco; um flash branco e uma moldura
+#            branca piscando com o plano seguinte dentro dela, crescendo até tomar a tela.
+#   fim      escurece devagar (0,9 s). Cor quente, contraste alto.
+# Toda palavra e todo corte caem a 1 ou 2 quadros de um ataque do áudio.
+#
+# Aqui, a voz é a fala do gancho (e da abertura) do filme, e os relâmpagos mostram o próprio filme.
+nome: Honorable
+descricao: >-
+  Fala em letreiro de LED, palavra por palavra no preto, com relâmpagos do filme nos respiros.
+  No drop o letreiro enrola e os planos entram em corte seco, flash e moldura piscando.
+referencia: https://www.capcut.com/template-detail/7671220229229301013
+
+edit:
+  proporcao: "9:16"
+  velocidade: 0.92
+  corte_min: 0.4
+  corte_max: 1.0
+  transicoes: [corte, flash, moldura]
+  transicao_drop: rolo
+  fim_preto: 0.9
+  cor: {contraste: 1.16, saturacao: 0.95, brilho: -0.02, balanco: quente, vinheta: true, grao: 2}
+
+letreiro:
+  fonte: Impact
+  tamanho: 175
+  cores: [FFFFFF, E8202A]
+  max_palavras: 4
+  led_passo: 7
+  led_fundo: 0.16
+  aberracao: 5
+  brilho: 0.5
