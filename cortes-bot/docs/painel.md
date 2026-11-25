@@ -11,7 +11,8 @@ Painel web local em **http://localhost:8800**, o lugar onde o usuário trabalha 
 Como subir:
 - `python -m cortes painel` (com terminal);
 - `iniciar_painel.pyw` sobe escondido, sem janela, e a saída vai para `dados/painel.log`. Use `--instalar`/`--remover`
-  para pôr ou tirar da inicialização do Windows, `--reiniciar` depois de um `git pull` e `--parar` para desligar;
+  para pôr ou tirar da inicialização do Windows, `--reiniciar` depois de um `git pull` e `--parar` para desligar.
+  Sem a `ANTHROPIC_API_KEY` no ambiente de quem o abriu, ele a lê das variáveis do usuário (veja edits.md);
 - no Claude Code: `.claude/launch.json` tem a configuração `painel` para o preview e a `painel-teste`, uma segunda
   cópia na porta **8801** com `trabalhador=False` (sem a fila de publicação). Use a de teste enquanto o painel de
   verdade estiver aberto na 8800, para não ter dois trabalhadores de fila publicando ao mesmo tempo.

@@ -100,7 +100,11 @@ edit).
 
 O edit roda num processo filho do painel e só usa a IA se a `ANTHROPIC_API_KEY` estiver no ambiente **do painel**.
 Como ele sobe sozinho com o Windows, grave a chave como variável de usuário (`setx ANTHROPIC_API_KEY "..."`) e rode
-`iniciar_painel.pyw --reiniciar`. Sem a chave, o formulário mostra um aviso.
+`iniciar_painel.pyw --reiniciar`. Sem a chave, o formulário mostra um aviso. Se o painel for aberto por um programa
+que não tem a chave no ambiente (um terminal aberto antes do `setx`, uma ferramenta), o `iniciar_painel.pyw` a lê das
+variáveis do usuário no registro (`_variaveis_do_usuario`) e anota no `dados/painel.log`; sem ela em lugar nenhum, o
+log mostra `AVISO: sem ANTHROPIC_API_KEY`. (Um painel aberto assim, sem a chave, fez três edits saírem sem IA, com o
+gancho fora do tema e cartelas no lugar de planos.)
 
 ### Filme e música do YouTube
 
