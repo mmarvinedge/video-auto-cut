@@ -25,17 +25,22 @@ VALIDADE = 300.0
 
 
 def vods(cfg: dict, nome_canal: str, n: int = 8, atualizar: bool = False) -> list[dict]:
+    """Os VODs do canal, cada um com `processado` (já virou cortes aqui), para não repetir."""
     agora = time.time()
     if not atualizar and (c := _cache.get(nome_canal)) and agora - c[0] < VALIDADE:
-        return c[1]
-    try:
-        lista = vod.listar(config.canal(cfg, nome_canal), n)
-    except subprocess.CalledProcessError as e:
-        # sem rede, canal inexistente ou yt-dlp desatualizado: o painel mostra o recado
-        raise RuntimeError((e.stderr or "").strip().splitlines()[-1] if e.stderr
-                           else "o yt-dlp não conseguiu ler a página do canal.") from e
-    _cache[nome_canal] = (agora, lista)
-    return lista
+        lista = c[1]
+    else:
+        try:
+            lista = vod.listar(config.canal(cfg, nome_canal), n)
+        except subprocess.CalledProcessError as e:
+            # sem rede, canal inexistente ou yt-dlp desatualizado: o painel mostra o recado
+            raise RuntimeError((e.stderr or "").strip().splitlines()[-1] if e.stderr
+                               else "o yt-dlp não conseguiu ler a página do canal.") from e
+        _cache[nome_canal] = (agora, lista)
+    # "processado" é olhado a cada vez (não fica no cache): uma live processada agora já aparece
+    cand = config.pasta_canal(cfg, nome_canal) / "candidatos"
+    return [dict(v, processado=bool(v.get("id")) and any(
+        (cand / f"{v['id']}{s}.json").exists() for s in ("_audio", ""))) for v in lista]
 
 
 def estado() -> dict:

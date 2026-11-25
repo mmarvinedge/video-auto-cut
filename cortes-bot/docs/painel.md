@@ -23,7 +23,7 @@ A aba vem do `#hash` da URL (`abaAtual()`, `mostrarAba()`), e cada uma é uma `<
 
 | Aba | O que faz | Rotas usadas |
 |---|---|---|
-| **Lives** | escolhe o streamer, lista os VODs, processa um, ajusta o enquadramento, adiciona streamer | `/api/vods`, `/api/processar`, `/api/trabalho`, `/api/enquadrar`, `/api/canais` |
+| **Lives** | escolhe o streamer, lista os VODs (com a data da live e "já processada"), processa um, ajusta o enquadramento, adiciona streamer | `/api/vods`, `/api/processar`, `/api/trabalho`, `/api/enquadrar`, `/api/canais` |
 | **Edits** | formulário do edit de filme (filme e música do computador ou do YouTube, tema, trecho, ajustes finos), seletor de arquivos, andamento e cards dos edits feitos (vídeo, título/descrição/hashtags, ajustar o edit, renderizar de novo, copiar para prontos) | `/api/edit`, `/api/edits`, `/api/arquivos`, `/video-edit/<id>`, `/quadro-edit/<id>`, `/mini-edit/<id>`, `/audio-edit/<id>`, `/api/edits/<id>/linha\|planos\|renderizar\|prontos\|texto\|ajustar\|corte\|desfazer\|previa`, `/api/trabalho` |
 | **Revisão** | cards dos cortes: vídeo, capa, título/descrição/hashtags, IA, aprovar/rejeitar, re-render | `/api/cortes`, `/api/cortes/<id>`, `/video/<id>`, `/capa/<id>`, `/api/legenda/<id>`, `/api/prompt/<id>`, `/api/rerender/<id>`, `/api/publicar` |
 | **Fila** | publicações agendadas: cancelar, tentar de novo, publicar agora | `/api/fila`, `/api/fila/<id>/<acao>` |

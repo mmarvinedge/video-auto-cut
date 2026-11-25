@@ -256,6 +256,9 @@ dialog::backdrop { background: rgba(0, 0, 0, .6); }
 .vod .corpo { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
 .vod h3 { margin: 0; font-size: 14px; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .vod .motivo { word-break: break-all; }
+.vod .quando { font-size: 13px; color: var(--tinta-2); }
+.vod .badge.feito { color: var(--ok); background: var(--ok-f); border-color: transparent; }
+.vod.feito h3 { color: var(--tinta-2); }
 
 /* o trabalho em andamento: a borda esquerda diz o estado sem precisar ler */
 .trabalho { background: var(--sup); border: 1px solid var(--borda); border-left: 3px solid var(--borda-2);

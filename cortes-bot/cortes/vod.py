@@ -24,14 +24,53 @@ def e_youtube(url: str) -> bool:
 
 
 def listar(canal: dict, n: int = 5) -> list[dict]:
+    """Os últimos VODs do canal: id, título, duração, url e `data` (início da live, em epoch, ou None).
+
+    A lista rápida (`--flat-playlist`) traz a data no Kick, mas não na Twitch nem no YouTube. Na
+    Twitch as datas vêm numa consulta só ao gql (`_datas_twitch`); no YouTube, o yt-dlp estima a
+    data pelo "há 2 dias" da página (`approximate_date`)."""
     cmd = [sys.executable, "-m", "yt_dlp", "--flat-playlist", "--playlist-items", f"1:{n}", "-J", _url_videos(canal)]
+    if canal["plataforma"] == "youtube":
+        cmd[3:3] = ["--extractor-args", "youtubetab:approximate_date"]
     out = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", check=True).stdout
     # No Kick o yt-dlp devolve a url com um "#__youtubedl_smuggle=..." (dado interno dele, que só
     # repete a disponibilidade). Ele baixa igual sem isso, e com isso a url não passa na validação
     # do painel: todo VOD do Kick era recusado como "endereço inválido".
-    return [{"id": e.get("id"), "titulo": e.get("title"), "duracao": e.get("duration"),
-             "url": limpar_url(e.get("url") or "")} for e in json.loads(out).get("entries", [])
+    vods = [{"id": e.get("id"), "titulo": e.get("title"), "duracao": e.get("duration"),
+             "url": limpar_url(e.get("url") or ""), "data": e.get("timestamp") or e.get("release_timestamp")}
+            for e in json.loads(out).get("entries", [])
             if e.get("live_status") not in ("is_live", "is_upcoming")]
+    if canal["plataforma"] == "twitch" and vods:
+        datas = _datas_twitch([v["id"] for v in vods])
+        for v in vods:
+            v["data"] = v["data"] or datas.get(v["id"])
+    return vods
+
+
+def _datas_twitch(ids: list[str]) -> dict[str, float]:
+    """Quando cada VOD da Twitch começou ({id: epoch}), numa consulta só ao gql (o mesmo do chat
+    dos VODs). Sem resposta, volta vazio: a lista sai sem as datas, não quebra."""
+    import urllib.request
+    from datetime import datetime
+
+    from .chat_vod import CLIENT_ID, GQL
+    numeros = {i: str(i).lstrip("v") for i in ids if str(i).lstrip("v").isdigit()}
+    if not numeros:
+        return {}
+    consulta = "{ " + " ".join(f'v{k}: video(id: "{n}") {{ createdAt }}' for k, n in enumerate(numeros.values())) + " }"
+    req = urllib.request.Request(GQL, json.dumps({"query": consulta}).encode(),
+                                 {"Client-ID": CLIENT_ID, "Content-Type": "application/json"})
+    try:
+        with urllib.request.urlopen(req, timeout=15) as r:
+            dados = json.load(r).get("data") or {}
+    except Exception:          # noqa: BLE001 - a data é um extra: sem ela a lista continua
+        return {}
+    saida = {}
+    for k, i in enumerate(numeros):
+        criado = (dados.get(f"v{k}") or {}).get("createdAt")
+        if criado:
+            saida[i] = datetime.fromisoformat(criado.replace("Z", "+00:00")).timestamp()
+    return saida
 
 
 def limpar_url(url: str) -> str:

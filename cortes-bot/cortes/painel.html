@@ -1095,6 +1095,18 @@ function iniciarLives() {
   verTrabalho();
 }
 
+// Quando a live foi: "hoje, 14:20", "ontem, 21:05", "seg, 18/11 · 14:20" (a data vem em epoch)
+function dataLive(ts) {
+  if (!ts) return "data desconhecida";
+  const d = new Date(ts * 1000), hoje = new Date();
+  const dias = Math.round((new Date(hoje.toDateString()) - new Date(d.toDateString())) / 864e5);
+  const hora = d.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
+  if (dias === 0) return `hoje, ${hora}`;
+  if (dias === 1) return `ontem, ${hora}`;
+  const dia = d.toLocaleDateString("pt-BR", { weekday: "short", day: "2-digit", month: "2-digit" }).replace(".", "");
+  return `${dia} · ${hora}`;
+}
+
 async function buscarVods(atualizar) {
   const canal = $("#lv-canal").value;
   if (!canal) return;
@@ -1105,12 +1117,14 @@ async function buscarVods(atualizar) {
     $("#lv-lista").innerHTML = `<p class="vazio">Não deu para listar: ${esc(r.erro)}</p>`;
     return;
   }
-  $("#lv-recado").textContent = `${r.vods.length} VODs`;
+  const feitos = r.vods.filter(v => v.processado).length;
+  $("#lv-recado").textContent = `${r.vods.length} VODs` + (feitos ? ` · ${feitos} já processado${feitos > 1 ? "s" : ""}` : "");
   $("#lv-lista").innerHTML = r.vods.length ? r.vods.map(v => `
-    <article class="vod">
+    <article class="vod${v.processado ? " feito" : ""}">
       <div class="dur">${v.duracao ? hhmmss(v.duracao).replace(/:\d\d$/, "") : "—"}</div>
       <div class="corpo">
         <h3>${esc(v.titulo || "(sem título)")}</h3>
+        <span class="quando">${dataLive(v.data)}${v.processado ? ` <span class="badge feito">já processada</span>` : ""}</span>
         <a class="motivo" href="${esc(v.url)}" target="_blank" rel="noreferrer">${esc(v.url)}</a>
       </div>
       <button class="enquadrar-vod" data-url="${esc(v.url)}">Enquadrar</button>
