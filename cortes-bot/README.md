@@ -173,7 +173,7 @@ python -m cortes edit "D:/filmes/Filme.mkv" "D:/musicas/Musica.mp3" --tema "o ro
   melhor, 192 ou 128 kbps). O edit baixa antes de começar, em `dados/edits/_youtube/`. Com o Deno instalado, o YouTube
   libera as qualidades mais altas.
 - `--trecho 1:20:00-1:42:00` analisa só uma parte do filme (mais rápido, e a IA vê planos mais parecidos).
-- `--gancho 1:23:10-1:23:19` e `--drop 41.2` fixam à mão a fala e o ponto da música (já em slowed).
+- `--gancho 1:23:10-1:23:19` e `--drop 41.2` fixam à mão a fala e o ponto da música (já tratada: em slowed, se ele estiver ligado).
 - Sem `ANTHROPIC_API_KEY` (ou com `--sem-ia`), o gancho e os planos são escolhidos por heurística, bem pior.
 - `--so-planejar` só grava o `plano.json`. Depois de mexer nele (trocar um plano, o efeito, o gancho),
   rode `python -m cortes edit-render <plano.json>`. `--prontos` copia o vídeo e o texto para `prontos/`.

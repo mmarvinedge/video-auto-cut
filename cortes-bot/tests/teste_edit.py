@@ -474,5 +474,34 @@ def main():
     print(f"ok  abertura com falas {a_dur:.1f}s + gancho {g4_dur:.1f}s + fala no drop + ritmo rápido = {p4['duracao']:.1f}s")
 
 
+def teste_drop_pelo_grave():
+    """Regressões medidas num edit real que falhou (uma mixagem de funk de 5,6 min + Skrillex):
+    o drop é o grave voltando, e vale o primeiro."""
+    # drop pelo grave (dB por batida). Funk: respiro, volta pela metade, pancada solta, volta cheia
+    bt = np.arange(200) * 0.627
+    funk = np.full(200, 25.0)
+    funk[80:88] = -20                     # respiro
+    funk[88:93] = 8                       # o grave volta pela metade
+    funk[93], funk[94], funk[95] = 16, 22, 6      # sobe e dá uma pancada solta antes da volta
+    funk[96:] = [22, 29, 23, 25] * 26     # a volta cheia, oscilando como no funk
+    gr = 10 ** (funk / 20)
+    i = batidas.achar_drop(gr, bt, antes=40, depois=15)
+    assert i == 96, (i, bt[i])
+    # o mesmo drop repetido: vale o primeiro, não o maior por décimos de dB
+    rep = np.full(200, -20.0)
+    for ini, nivel in ((30, 20.0), (90, 20.4), (150, 20.2)):
+        rep[ini:ini + 40] = nivel
+    i = batidas.achar_drop(10 ** (rep / 20), bt, antes=5, depois=15)
+    assert i == 30, i
+    # fim de videoclipe: o volume total sobe, mas o grave não. Pelo grave, o drop fica no começo
+    clipe = np.full(200, -30.0)
+    clipe[40:] = 26
+    clipe[180:] = -60                     # a música acaba; o barulho do clipe não tem grave
+    assert batidas.achar_drop(10 ** (clipe / 20), bt, antes=5, depois=15) == 40
+    assert batidas.subida_db(10 ** (clipe / 20), 40) > batidas.DROP_CLARO_DB
+    print("ok  drop pelo grave: a volta cheia, o primeiro, e não o barulho do fim do clipe")
+
+
 if __name__ == "__main__":
     main()
+    teste_drop_pelo_grave()

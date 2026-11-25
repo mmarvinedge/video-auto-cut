@@ -29,7 +29,8 @@ PADRAO = {
     "velocidade": 0.85,          # câmera lenta dos planos da música (1 = normal)
     "proporcao": "4:5",          # 4:5 com tarjas pretas (o visual dos edits) | 9:16 tela cheia
     "idioma": "pt",              # da fala do filme, para o Whisper: pt, en, es... ou auto
-    "slowed": 0.85, "reverb": True,
+    "slowed": 1.0,               # 1 = música original; 0,85 = o "slowed" do TikTok
+    "reverb": True,              # só junto com o slowed: com a música original, ela fica limpa
     "volume_gancho": 0.18,       # a música começa baixinha debaixo da fala
     "musica_no_gancho": True,    # False: muda até o drop, que entra de uma vez (mais impacto)
     "volume_musica": 1.0,        # sobre o nível padrão da música (-15 dB RMS): 0.5 = metade, 1.3 = mais alta
@@ -399,7 +400,8 @@ def planejar(filme: Path, musica: Path, cfg: dict, tema: str = "", trecho=None, 
 
     # 1. música: trata (slowed/reverb) e acha as batidas
     aviso("Preparando a música...")
-    wav = batidas.preparar(musica, pasta / "musica.wav", ce["slowed"], ce["reverb"])
+    wav = batidas.preparar(musica, pasta / "musica.wav", ce["slowed"],
+                           bool(ce["reverb"]) and float(ce["slowed"] or 1) < 0.999)
     mus = batidas.analisar(wav)
     aviso(f"  {mus['bpm']} BPM, {len(mus['batidas'])} batidas, {mus['duracao']:.0f}s")
 
@@ -501,11 +503,18 @@ def _montar_plano(ctx: dict, gancho_manual, drop, duracao, drop_filme, fala_drop
 
     # 4. drop e pontos de corte
     bt, en = np.array(mus["batidas"]), np.array(mus["energia"])
+    if "grave" not in mus:      # batidas.json de antes do grave: mede agora (o drop é o grave voltando)
+        mus["grave"] = batidas.grave_por_batida(batidas.carregar(Path(wav)), bt).round(6).tolist()
+    gr = np.array(mus["grave"])
     if drop is not None:
         i_drop = int(np.argmin(np.abs(bt - drop)))
     else:
-        i_drop = batidas.achar_drop(en, bt, antes=max(min(g_dur, 8), 4), depois=dur_musica)
+        i_drop = batidas.achar_drop(gr, bt, antes=max(min(g_dur, 8), 4), depois=dur_musica)
     t_drop = float(bt[i_drop])
+    subida = batidas.subida_db(gr, i_drop)
+    if drop is None and subida < batidas.DROP_CLARO_DB:
+        aviso(f"  a música não tem um drop claro (o grave sobe só {subida:.1f} dB aos {t_drop:.0f}s): os cortes começam "
+              "numa volta de seção. Para escolher outro ponto, use Ajustar o edit > Drop e gancho")
     pontos = batidas.cortes_na_batida(mus["batidas"], t_drop, dur_musica, c_min, c_max)
 
     # fala em cima do drop: o primeiro corte dura a frase inteira (juntando batidas), na velocidade 1
@@ -558,7 +567,7 @@ def _montar_plano(ctx: dict, gancho_manual, drop, duracao, drop_filme, fala_drop
         "filme": str(filme.resolve()), "musica_original": str(musica.resolve()),
         "tema": tema, "analise": ctx.get("analise"), "config": ce, "gatilho": gatilho,
         "musica": config.relativo(wav), "bpm": mus["bpm"],
-        "drop": round(t_drop, 3), "musica_inicio": round(t_drop - g_dur, 3), "tarja": tarja,
+        "drop": round(t_drop, 3), "drop_subida_db": round(subida, 1), "musica_inicio": round(t_drop - g_dur, 3), "tarja": tarja,
         "drop_filme": round(drop_filme, 3) if drop_filme is not None else None,
         "ritmo": ritmo, "drop_fala": drop_fala,
         "abertura_falas": falas_ab, "abertura_dur": a_dur,

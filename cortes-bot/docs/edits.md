@@ -33,7 +33,8 @@ Dá para usar de dois jeitos: pela aba **Edits** do painel ou pelo comando
 3. **Trecho do filme** (opcional): início e fim, em `h:mm:ss` ou segundos. Analisar só uma parte é mais rápido e deixa
    os planos mais coerentes com o gancho. Ao lado, **Idioma da fala** (português, inglês, espanhol ou detectar
    sozinho): o idioma em que o Whisper transcreve o filme para achar o gancho.
-4. **Ajustes finos** (recolhidos): formato (4:5 ou 9:16), velocidade da música (original até 0,8×), transições
+4. **Ajustes finos** (recolhidos): formato (4:5 ou 9:16), velocidade da música (original, o padrão, até 0,8×; o
+   slowed vem com reverb), transições
    (variadas, só zoom e flash, só zoom ou corte seco), música antes do drop (baixinha debaixo da fala ou muda até o
    drop), volume da música (mais alta, normal, mais baixa, bem baixa), ritmo dos cortes, abertura antes do gancho (sem ou com falas do filme), duração da parte da música, drop
    (segundo da música), drop no filme (o momento do filme que cai no drop), drop e a fala do gatilho (depois ou durante), fim da fala do gatilho e
@@ -171,7 +172,7 @@ ou no drop, edite o JSON e rode `python -m cortes edit-render <plano.json>`.
 
 | Módulo | Faz |
 |---|---|
-| `batidas.py` | `preparar` (wav, slowed com `asetrate` + reverb com `aecho`); `analisar` (BPM, batidas, energia por batida); `achar_drop`; `cortes_na_batida` |
+| `batidas.py` | `preparar` (wav; slowed com `asetrate` + reverb com `aecho`, que o edit só liga junto com o slowed: o padrão é a música original); `analisar` (BPM, batidas, energia por batida); `achar_drop`; `cortes_na_batida` |
 | `cenas.py` | `tarja` (área sem as faixas pretas do cinemascope); `detectar` (cortes de câmera pela nota de cena de cada quadro, em `_escolher_cortes`); `miniaturas` (uma por plano, já no recorte vertical, mais o brilho médio); `folhas` (grades 6x5 numeradas para a IA); `candidatas` |
 | `transcrever.py` | `Transcritor.transcrever(..., idioma, vad)`: o edit usa `vad=False` e descarta os segmentos inventados (`_inventado`) |
 | `ia_edit.py` | uma chamada ao Claude com a transcrição (`[segundo] frase`), a lista dos planos com o tempo de cada um e as folhas como imagens; devolve `PlanoIA` (gancho, planos em ordem, `duracao_musica` e `drop_no_filme` quando o tema pede, título, hashtags, motivo) |
@@ -182,8 +183,22 @@ ou no drop, edite o JSON e rode `python -m cortes edit-render <plano.json>`.
 
 Feito só com numpy (Ellis 2007, o mesmo método da librosa): envelope de ataques pelo fluxo espectral, andamento pela
 autocorrelação (puxado para perto de 120 BPM) e batidas por programação dinâmica. `LATENCIA` foi calibrada com cliques
-e bumbos sintéticos (erro abaixo de 5 ms). O drop é a batida em que a média de volume das 8 seguintes mais sobe em
-relação às 8 anteriores, com música suficiente antes (para o gancho) e depois (para a parte da música).
+e bumbos sintéticos (erro abaixo de 5 ms).
+
+O drop (`achar_drop`) é medido no **grave** (30–130 Hz, `grave_por_batida`, gravado em `batidas.json`): música
+masterizada hoje tem o volume total quase constante, e o drop é o baixo e o bumbo voltando. Num Skrillex o grave
+salta 37 dB no drop e o volume total, 5; o volume total escolhia os 241 s de uma música de 261 s, onde só havia o
+barulho do fim do videoclipe, e numa mixagem de funk de 5,6 min escolhia os 4 min. Em três passos:
+
+1. a subida em cada batida: média das 8 seguintes menos a das 8 anteriores, em dB;
+2. vale a **primeira** volta forte (pelo menos 70% da maior), porque drop e refrão se repetem;
+3. perto dela, a primeira batida em que o grave já está no nível cheio de depois e fica nele (nas 4 batidas, a
+   mediana a até 6 dB e nenhuma a mais de 12 dB abaixo). O grave pode voltar em degraus, com pancada solta antes:
+   no funk medido, ele volta pela metade aos 56,8 s, dá uma pancada aos 59,95 s e só fica cheio aos 61,2 s.
+
+Só vale batida com música suficiente antes (gancho, preparação) e depois (a parte da música). Se o grave sobe menos
+de `DROP_CLARO_DB` (6 dB), a música não tem drop audível e o trabalho avisa no log; o plano guarda a subida em
+`drop_subida_db`. Um `batidas.json` antigo, sem `grave`, é medido na hora.
 
 ### Como o plano é montado (`edit.planejar`)
 
