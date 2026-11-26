@@ -1287,6 +1287,7 @@ function cardEdit(e) {
         <input class="hashtags" value="${esc(comCerquilha(e.hashtags))}" aria-label="Hashtags"></label>
       ${e.motivo ? `<div class="motivo">IA: ${esc(e.motivo)}</div>` : ""}
       <div class="acoes">
+        <button class="ed-descartar">Descartar</button>
         <button class="ed-ajustar">Ajustar o edit</button>
         <button class="ed-render">${e.renderizado ? "Renderizar de novo" : "Renderizar"}</button>
         <button class="ed-prontos"${e.renderizado ? "" : " disabled"}>Copiar para prontos</button>
@@ -1419,6 +1420,17 @@ $("#ed-lista").addEventListener("click", async ev => {
   } else if (b.classList.contains("ed-prontos")) {
     const r = await api(`/api/edits/${id}/prontos`, {});
     $(".salvo", card).textContent = r.ok ? (r.arquivo ? "copiado para " + r.arquivo : "a pasta de prontos está desligada no config") : r.erro;
+  } else if (b.classList.contains("ed-descartar")) {
+    const nome = $(".titulo", card).value || card.dataset.id;
+    if (!await perguntar(`Descartar o edit "${nome}"?\n\nA pasta dele (vídeo, plano e prévias) vai para a Lixeira do Windows, `
+        + "de onde dá para restaurar. A cópia em prontos, se você copiou, continua lá.")) return;
+    b.disabled = true;
+    const r = await api(`/api/edits/${id}/descartar`, {});
+    if (!r.ok) { b.disabled = false; $(".salvo", card).textContent = r.erro; return; }
+    card.querySelector("video")?.removeAttribute("src");
+    card.remove();
+    if (!$("#ed-lista .card-edit"))
+      $("#ed-lista").innerHTML = `<p class="vazio">Nenhum edit ainda. Escolha o filme e a música acima.</p>`;
   }
 });
 

@@ -727,12 +727,18 @@ def servir(dados: Path, porta: int = 8800, trabalhador: bool = True) -> None:
                                                      "pronto: o edit está na lista abaixo")
                     painel_edit.lembrar(dados, args[1], args[2])
                     self._json({"ok": True, "atual": atual})
-                elif m := re.fullmatch(r"/api/edits/(.+)/(renderizar|prontos|texto|ajustar|desfazer|previa|corte)", caminho):
+                elif m := re.fullmatch(r"/api/edits/(.+)/(renderizar|prontos|texto|ajustar|desfazer|previa|corte|descartar)", caminho):
                     ident, acao = m.groups()
                     pasta = painel_edit.pasta_edit(dados, ident)
-                    if acao in ("ajustar", "desfazer", "corte") and (trabalho.estado().get("atual") or {}).get("rodando"):
+                    atual = trabalho.estado().get("atual") or {}
+                    if acao in ("ajustar", "desfazer", "corte") and atual.get("rodando"):
                         raise RuntimeError("tem um trabalho rodando: espere ele terminar para ajustar o plano")
-                    if acao == "ajustar":
+                    if acao == "descartar" and atual.get("rodando") and ident in (atual.get("titulo") or ""):
+                        raise RuntimeError("esse edit está renderizando: espere terminar para descartar")
+                    if acao == "descartar":
+                        painel_edit.descartar(dados, ident)
+                        self._json({"ok": True})
+                    elif acao == "ajustar":
                         self._json({"ok": True, "plano": painel_edit.ajustar(dados, ident, corpo)})
                     elif acao == "corte":
                         self._json({"ok": True, "plano": painel_edit.editar_corte(dados, ident, corpo)})
