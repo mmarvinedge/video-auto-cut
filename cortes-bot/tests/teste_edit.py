@@ -518,6 +518,38 @@ def teste_casos_reais():
     print("ok  casos reais: cartelas do trailer fora, planos parados dentro; drop pelo grave (volta cheia, o primeiro)")
 
 
+def teste_descartar():
+    """Descartar um edit no painel: a pasta dele sai (para a Lixeira; aqui, trocada por um apagar),
+    a do filme fica, e um id fora do padrão é recusado."""
+    import shutil
+
+    from cortes import painel_edit
+    with tempfile.TemporaryDirectory(prefix="teste_descartar_") as tmp:
+        dados = Path(tmp)
+        for m in ("musica", "musica_2"):
+            (dados / "edits" / "filme" / m).mkdir(parents=True)
+            (dados / "edits" / "filme" / m / "plano.json").write_text("{}", encoding="utf-8")
+        (dados / "edits" / "filme" / "planos_0_100.json").write_text("[]", encoding="utf-8")
+        foram = []
+        orig = painel_edit._para_lixeira
+        painel_edit._para_lixeira = lambda p: (foram.append(p), shutil.rmtree(p))
+        try:
+            painel_edit.descartar(dados, "filme/musica")
+            for ruim in ("filme/../filme/musica_2", "filme", "filme/nao_existe"):
+                try:
+                    painel_edit.descartar(dados, ruim)
+                except (ValueError, FileNotFoundError):
+                    continue
+                raise AssertionError(f"descartou {ruim!r}")
+        finally:
+            painel_edit._para_lixeira = orig
+        assert foram == [dados / "edits" / "filme" / "musica"], foram
+        assert [e["id"] for e in painel_edit.listar(dados)] == ["filme/musica_2"]
+        assert (dados / "edits" / "filme" / "planos_0_100.json").exists(), "levou o cache do filme junto"
+    print("ok  descartar: só a pasta do edit sai, o cache do filme fica, id inválido recusado")
+
+
 if __name__ == "__main__":
     teste_casos_reais()
+    teste_descartar()
     main()

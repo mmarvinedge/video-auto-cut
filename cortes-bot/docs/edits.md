@@ -50,7 +50,10 @@ Dá para usar de dois jeitos: pela aba **Edits** do painel ou pelo comando
 
 Cada edit da lista mostra o vídeo, o gancho, o título, a descrição e as hashtags (editáveis: salvam no `plano.json` e
 no `edit.txt`), o motivo da IA e os botões **Ajustar o edit**, **Renderizar de novo** (depois de editar o
-`plano.json` à mão) e **Copiar para prontos**.
+`plano.json` à mão), **Copiar para prontos** e **Descartar**. Descartar pede confirmação e manda a pasta do edit
+(`dados/edits/<filme>/<musica>/`: vídeo, plano, música tratada, prévias) para a Lixeira do Windows, de onde dá para
+restaurar; o que é do filme (cenas, falas, miniaturas, na pasta de cima) fica para os próximos edits, e a cópia em
+`prontos/` também. Um edit que está renderizando não pode ser descartado.
 
 ### Ajustar o edit (depois de pronto)
 

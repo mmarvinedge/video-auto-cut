@@ -241,6 +241,34 @@ def para_prontos(dados: Path, ident: str) -> str:
     return str(edit.copiar_para_prontos(video(dados, ident), config.carregar()) or "")
 
 
+def descartar(dados: Path, ident: str) -> None:
+    """Tira o edit da lista: a pasta dele (vídeo, plano, música tratada, prévias) vai para a Lixeira
+    do Windows, de onde dá para restaurar. O que é do filme (cenas, falas, miniaturas, na pasta de
+    cima) fica para os próximos edits, e a cópia em prontos/, se houver, também."""
+    _para_lixeira(pasta_edit(dados, ident))
+
+
+def _para_lixeira(pasta: Path) -> None:
+    """Manda a pasta para a Lixeira (SHFileOperationW com FOF_ALLOWUNDO), sem perguntar nem mostrar
+    janela: quem confirma é o painel."""
+    import ctypes
+    from ctypes import wintypes
+
+    class SHFILEOPSTRUCTW(ctypes.Structure):
+        _fields_ = [("hwnd", wintypes.HWND), ("wFunc", wintypes.UINT), ("pFrom", wintypes.LPCWSTR),
+                    ("pTo", wintypes.LPCWSTR), ("fFlags", ctypes.c_ushort), ("fAnyOperationsAborted", wintypes.BOOL),
+                    ("hNameMappings", ctypes.c_void_p), ("lpszProgressTitle", wintypes.LPCWSTR)]
+
+    FO_DELETE, FOF_SILENT, FOF_NOCONFIRMATION, FOF_ALLOWUNDO, FOF_NOERRORUI = 3, 0x4, 0x10, 0x40, 0x400
+    op = SHFILEOPSTRUCTW(wFunc=FO_DELETE, pFrom=str(pasta.resolve()) + "\0",   # a lista acaba em dois \0
+                         fFlags=FOF_SILENT | FOF_NOCONFIRMATION | FOF_ALLOWUNDO | FOF_NOERRORUI)
+    erro = ctypes.windll.shell32.SHFileOperationW(ctypes.byref(op))
+    if erro or op.fAnyOperationsAborted or pasta.exists():
+        # o mais comum: o vídeo aberto em outro programa (um player, o Explorer gerando a miniatura)
+        raise RuntimeError(f"não deu para mandar o edit para a Lixeira (código {erro}): "
+                           "feche o vídeo se ele estiver aberto em outro programa e tente de novo")
+
+
 # ------------------------------------------------------------------ ajuste do drop e do gancho
 #
 # A tela de ajuste mostra o filme quadro a quadro (o navegador não toca mkv/HEVC de filme, então

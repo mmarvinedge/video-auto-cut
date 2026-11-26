@@ -151,6 +151,7 @@ video { height: min(640px, calc(100vh - 220px)); width: auto; aspect-ratio: 9 / 
 .acoes { display: flex; gap: 8px; justify-content: flex-end; border-top: 1px solid var(--borda); padding-top: 16px; margin-top: auto; }
 .acoes .aprovar { background: var(--acao); border-color: var(--acao); color: var(--acao-tinta); }
 .acoes .aprovar:hover { background: var(--acao-hover); }
+.acoes .ed-descartar { color: var(--ruim); margin-right: auto; }    /* longe dos outros: apaga o edit */
 .acoes .rejeitar[aria-pressed="true"] { color: var(--ruim); background: var(--ruim-f); border-color: transparent; }
 .pubs { display: flex; flex-direction: column; gap: 6px; font-size: 13px; }
 .salvo { font-size: 12px; color: var(--ok); min-height: 18px; text-align: right; }
